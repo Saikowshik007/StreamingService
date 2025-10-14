@@ -1,0 +1,111 @@
+.course-page {
+  min-height: 100vh;
+}
+
+.course-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 60px 20px;
+}
+
+.course-header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 15px;
+}
+
+.course-meta {
+  font-size: 1.1rem;
+  opacity: 0.9;
+  margin-bottom: 15px;
+}
+
+.course-desc {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  opacity: 0.95;
+  max-width: 800px;
+}
+
+.lessons-list {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  margin-bottom: 50px;
+}
+
+.lesson-item {
+  display: flex;
+  align-items: center;
+  padding: 25px;
+  border-bottom: 1px solid #e0e0e0;
+  text-decoration: none;
+  color: inherit;
+  transition: background-color 0.3s;
+}
+
+.lesson-item:last-child {
+  border-bottom: none;
+}
+
+.lesson-item:hover {
+  background-color: #f8f8f8;
+}
+
+.lesson-number {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  flex-shrink: 0;
+  margin-right: 20px;
+}
+
+.lesson-details {
+  flex: 1;
+}
+
+.lesson-details h3 {
+  font-size: 1.2rem;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.lesson-details p {
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.lesson-duration {
+  display: inline-block;
+  padding: 4px 12px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.lesson-arrow {
+  font-size: 1.5rem;
+  color: #999;
+  margin-left: 20px;
+}
+
+.no-lessons {
+  background: white;
+  padding: 50px 20px;
+  border-radius: 8px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.no-lessons p {
+  font-size: 1.1rem;
+  color: #666;
+}

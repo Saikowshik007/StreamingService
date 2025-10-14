@@ -1,0 +1,107 @@
+.lesson-player {
+  min-height: 100vh;
+  background-color: #1a1a1a;
+}
+
+.video-container {
+  width: 100%;
+  background-color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.video-player {
+  width: 100%;
+  max-width: 1200px;
+  height: auto;
+  max-height: 70vh;
+}
+
+.no-video {
+  color: white;
+  text-align: center;
+  padding: 100px 20px;
+}
+
+.no-video p {
+  font-size: 1.2rem;
+}
+
+.lesson-content {
+  background-color: #f5f5f5;
+  padding: 40px 20px;
+}
+
+.lesson-title {
+  font-size: 2rem;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.lesson-description {
+  font-size: 1.1rem;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 40px;
+}
+
+.resources-section {
+  margin-top: 40px;
+}
+
+.resources-section h2 {
+  font-size: 1.5rem;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.resources-list {
+  display: grid;
+  gap: 15px;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.resource-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.resource-icon {
+  font-size: 2rem;
+  margin-right: 15px;
+}
+
+.resource-info {
+  flex: 1;
+}
+
+.resource-info h3 {
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.resource-type {
+  font-size: 0.9rem;
+  color: #999;
+  text-transform: uppercase;
+}
+
+.download-icon {
+  font-size: 1.5rem;
+  color: #667eea;
+  margin-left: 15px;
+}
