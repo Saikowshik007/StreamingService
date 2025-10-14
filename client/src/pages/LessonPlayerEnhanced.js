@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import API_URL from '../config';
 import './LessonPlayerEnhanced.css';
 
 function LessonPlayerEnhanced() {
   const { lessonId } = useParams();
-  const navigate = useNavigate();
   const [lesson, setLesson] = useState(null);
   const [currentFile, setCurrentFile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -14,60 +13,7 @@ function LessonPlayerEnhanced() {
   const videoRef = useRef(null);
   const progressInterval = useRef(null);
 
-  useEffect(() => {
-    fetchLesson();
-    return () => {
-      if (progressInterval.current) {
-        clearInterval(progressInterval.current);
-      }
-    };
-  }, [lessonId]);
-
-  useEffect(() => {
-    if (lesson && lesson.files && lesson.files.length > 0 && !currentFile) {
-      // Find first incomplete video or just the first video
-      const firstIncomplete = lesson.files.find(f => f.is_video && !f.completed);
-      const firstVideo = lesson.files.find(f => f.is_video);
-      setCurrentFile(firstIncomplete || firstVideo || lesson.files[0]);
-    }
-  }, [lesson]);
-
-  useEffect(() => {
-    if (currentFile && currentFile.is_video && videoRef.current) {
-      const video = videoRef.current;
-
-      // Seek to saved position
-      if (currentFile.progress_seconds && currentFile.progress_seconds > 0) {
-        video.currentTime = currentFile.progress_seconds;
-      }
-
-      // Update progress every 5 seconds
-      progressInterval.current = setInterval(() => {
-        if (!video.paused) {
-          updateProgress();
-        }
-      }, 5000);
-
-      return () => {
-        if (progressInterval.current) {
-          clearInterval(progressInterval.current);
-        }
-      };
-    }
-  }, [currentFile]);
-
-  const fetchLesson = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/api/lessons/${lessonId}`);
-      setLesson(response.data);
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to load lesson.');
-      setLoading(false);
-    }
-  };
-
-  const updateProgress = async () => {
+  const updateProgress = useCallback(async () => {
     if (!currentFile || !currentFile.is_video || !videoRef.current) return;
 
     const video = videoRef.current;
@@ -93,7 +39,60 @@ function LessonPlayerEnhanced() {
     } catch (err) {
       console.error('Failed to update progress:', err);
     }
-  };
+  }, [currentFile]);
+
+  useEffect(() => {
+    const fetchLesson = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/api/lessons/${lessonId}`);
+        setLesson(response.data);
+        setLoading(false);
+      } catch (err) {
+        setError('Failed to load lesson.');
+        setLoading(false);
+      }
+    };
+
+    fetchLesson();
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+    };
+  }, [lessonId]);
+
+  useEffect(() => {
+    if (lesson && lesson.files && lesson.files.length > 0 && !currentFile) {
+      // Find first incomplete video or just the first video
+      const firstIncomplete = lesson.files.find(f => f.is_video && !f.completed);
+      const firstVideo = lesson.files.find(f => f.is_video);
+      setCurrentFile(firstIncomplete || firstVideo || lesson.files[0]);
+    }
+  }, [lesson, currentFile]);
+
+  useEffect(() => {
+    if (currentFile && currentFile.is_video && videoRef.current) {
+      const video = videoRef.current;
+
+      // Seek to saved position
+      if (currentFile.progress_seconds && currentFile.progress_seconds > 0) {
+        video.currentTime = currentFile.progress_seconds;
+      }
+
+      // Update progress every 5 seconds
+      progressInterval.current = setInterval(() => {
+        if (!video.paused) {
+          updateProgress();
+        }
+      }, 5000);
+
+      return () => {
+        if (progressInterval.current) {
+          clearInterval(progressInterval.current);
+        }
+      };
+    }
+  }, [currentFile, updateProgress]);
 
   const handleFileSelect = (file) => {
     // Save progress of current video before switching

@@ -11,19 +11,19 @@ function CoursePage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    const fetchCourse = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/api/courses/${courseId}`);
+        setCourse(response.data);
+        setLoading(false);
+      } catch (err) {
+        setError('Failed to load course details.');
+        setLoading(false);
+      }
+    };
+
     fetchCourse();
   }, [courseId]);
-
-  const fetchCourse = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/api/courses/${courseId}`);
-      setCourse(response.data);
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to load course details.');
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return <div className="loading">Loading course...</div>;
