@@ -27,38 +27,42 @@ services:
     labels:
       # Enable Traefik
       - "traefik.enable=true"
-      - "traefik.http.routers.learning.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
 
-      - "traefik.http.routers.learning.entrypoints=websecure"
-      - "traefik.http.routers.learning.tls=true"
-      - "traefik.http.routers.learning.tls.certresolver=letsencrypt"
+      # HTTPS Router (websecure)
+      - "traefik.http.routers.learning-platform.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+      - "traefik.http.routers.learning-platform.entrypoints=websecure"
+      - "traefik.http.routers.learning-platform.tls=true"
+      - "traefik.http.routers.learning-platform.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.learning-platform.priority=100"
 
-      # Service
-      - "traefik.http.services.learning.loadbalancer.server.port=5000"
+      # Service - explicitly link to this container
+      - "traefik.http.services.learning-platform-service.loadbalancer.server.port=5000"
+      - "traefik.http.routers.learning-platform.service=learning-platform-service"
 
       # Health check for load balancer
-      - "traefik.http.services.learning.loadbalancer.healthcheck.path=/api/health"
-      - "traefik.http.services.learning.loadbalancer.healthcheck.interval=10s"
+      - "traefik.http.services.learning-platform-service.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.learning-platform-service.loadbalancer.healthcheck.interval=10s"
 
-      # Strip prefix middleware (if using path-based routing)
-      - "traefik.http.middlewares.learning-stripprefix.stripprefix.prefixes=/learn"
+      # Strip prefix middleware
+      - "traefik.http.middlewares.learning-platform-stripprefix.stripprefix.prefixes=/learn"
 
       # CORS headers middleware
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD"
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolalloworiginlist=https://streaming-service.vercel.app,https://jobtrackai.duckdns.org,http://localhost:3000"
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolallowcredentials=true"
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolallowheaders=Content-Type,Authorization,X-Requested-With,Range,Accept"
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolmaxage=3600"
+      - "traefik.http.middlewares.learning-platform-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD"
+      - "traefik.http.middlewares.learning-platform-cors.headers.accesscontrolalloworiginlist=https://streaming-service.vercel.app,https://jobtrackai.duckdns.org,http://localhost:3000"
+      - "traefik.http.middlewares.learning-platform-cors.headers.accesscontrolallowcredentials=true"
+      - "traefik.http.middlewares.learning-platform-cors.headers.accesscontrolallowheaders=Content-Type,Authorization,X-Requested-With,Range,Accept"
+      - "traefik.http.middlewares.learning-platform-cors.headers.accesscontrolmaxage=3600"
 
       # Apply middlewares in order: CORS first, then strip prefix
-      - "traefik.http.routers.learning.middlewares=learning-cors,learning-stripprefix"
+      - "traefik.http.routers.learning-platform.middlewares=learning-platform-cors,learning-platform-stripprefix"
 
       # HTTP to HTTPS redirect
-      - "traefik.http.routers.learning-http.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
-      - "traefik.http.routers.learning-http.entrypoints=web"
-      - "traefik.http.middlewares.learning-https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.learning-https-redirect.redirectscheme.permanent=true"
-      - "traefik.http.routers.learning-http.middlewares=learning-https-redirect"
+      - "traefik.http.routers.learning-platform-http.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+      - "traefik.http.routers.learning-platform-http.entrypoints=web"
+      - "traefik.http.routers.learning-platform-http.priority=100"
+      - "traefik.http.middlewares.learning-platform-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.learning-platform-https-redirect.redirectscheme.permanent=true"
+      - "traefik.http.routers.learning-platform-http.middlewares=learning-platform-https-redirect"
 
 networks:
   jobtrak-network:
