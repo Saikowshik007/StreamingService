@@ -1,261 +1,276 @@
-# Learning Platform - Udemy Clone
+# Learning Platform - Udemy-like Course Streaming System
 
-A full-stack learning management system (LMS) that streams videos and serves documents from your local file system. Built with Python Flask backend and React frontend.
+A full-stack learning management system (LMS) that automatically scans your local folder structure and serves videos/documents with progress tracking. Built with Python Flask backend and React frontend, integrated with Traefik for production deployment.
 
-## Features
+## 🚀 Key Features
 
-- Browse courses with beautiful UI
-- Stream videos from local file system with seek support
-- Serve PDF and document files
-- Track learning progress
-- Responsive design
-- Course organization with lessons and resources
+- **Automatic Folder Scanning** - Point to your course folder and it automatically detects courses, lessons, and files
+- **File-Level Progress Tracking** - Track progress for each video file individually
+- **Course Progress Dashboard** - See completion percentage and files completed
+- **Video Streaming** - Stream videos with seek support and auto-save position
+- **Document Serving** - Serve PDFs and documents
+- **Traefik Integration** - Works seamlessly with your existing Traefik setup
+- **Vercel Deployment** - Frontend hosted on Vercel, backend on your PC
 
-## Prerequisites
-
-- Python 3.8 or higher
-- Node.js 16 or higher
-- npm or yarn
-
-## Project Structure
-
-```
-StreamingService/
-├── app.py              # Flask backend server
-├── config.py           # Configuration settings
-├── database.py         # Database initialization and helpers
-├── add_courses.py      # Script to add courses to database
-├── requirements.txt    # Python dependencies
-├── .env               # Environment variables (create from .env.example)
-├── client/            # React frontend
-│   ├── public/
-│   └── src/
-│       ├── components/
-│       ├── pages/
-│       └── App.js
-```
-
-## Setup Instructions
-
-### 1. Backend Setup
-
-```bash
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Configure your media path
-# Edit .env file and set MEDIA_PATH to your video/document folder
-# Example: MEDIA_PATH=C:/Users/anant/Desktop/CourseMedia
-
-# Initialize the database
-python database.py
-```
-
-### 2. Organize Your Media Files
-
-Create a folder structure for your course media:
+## 📁 Expected Folder Structure
 
 ```
 CourseMedia/
-├── python/
-│   ├── intro.mp4
-│   ├── variables.mp4
-│   └── cheatsheet.pdf
-├── web/
-│   ├── html-intro.mp4
-│   └── css-basics.mp4
+├── Python Programming/
+│   ├── Introduction/
+│   │   ├── lesson1.mp4
+│   │   ├── lesson2.mp4
+│   │   └── notes.pdf
+│   └── Advanced Topics/
+│       ├── lesson3.mp4
+│       └── exercises.pdf
+├── Web Development/
+│   ├── HTML Basics/
+│   │   └── intro.mp4
+│   └── CSS Styling/
+│       └── styling.mp4
 ```
 
-### 3. Add Courses to Database
+**Structure:**
+- First level: Course folders (e.g., "Python Programming")
+- Second level: Lesson/topic folders (e.g., "Introduction")
+- Third level: Video and document files
 
-Edit `add_courses.py` to add your own courses, then run:
+## 🎬 Quick Start
+
+### 1. Set Up Folder Structure
 
 ```bash
-python add_courses.py
+# Create your course media folder
+mkdir -p C:/Users/anant/Desktop/CourseMedia
+
+# Add your courses following the structure above
 ```
 
-Or use the Python functions directly:
-
-```python
-from database import init_db
-from add_courses import add_course, add_lesson, add_resource
-
-# Add a course
-course_id = add_course(
-    title='My Course',
-    description='Course description',
-    instructor='Your Name'
-)
-
-# Add a lesson with video
-lesson_id = add_lesson(
-    course_id=course_id,
-    title='Lesson 1',
-    description='Lesson description',
-    video_path='folder/video.mp4',  # Relative to MEDIA_PATH
-    duration=600,  # seconds
-    order_index=1
-)
-
-# Add a resource (PDF, document, etc.)
-add_resource(
-    lesson_id=lesson_id,
-    title='Course Notes',
-    file_path='folder/notes.pdf',  # Relative to MEDIA_PATH
-    file_type='pdf'
-)
-```
-
-### 4. Frontend Setup
+### 2. Configure Environment
 
 ```bash
-# Navigate to client folder
+# Copy example environment file
+cp .env.example .env
+
+# Edit .env and set your media path
+# MEDIA_PATH=C:/Users/anant/Desktop/CourseMedia
+```
+
+### 3. Deploy with Docker (Traefik)
+
+```bash
+# Build and start
+docker-compose up -d
+
+# Scan your courses
+docker exec learning-platform-backend python folder_scanner.py
+
+# Check status
+docker logs learning-platform-backend
+```
+
+### 4. Test Backend
+
+```bash
+# Test through Traefik
+curl https://jobtrackai.duckdns.org/learn/api/health
+
+# Get courses
+curl https://jobtrackai.duckdns.org/learn/api/courses
+```
+
+### 5. Deploy Frontend to Vercel
+
+```bash
 cd client
-
-# Install dependencies
 npm install
-
-# Start the development server
-npm start
+vercel --prod
 ```
 
-The React app will open at http://localhost:3000
+Set environment variable in Vercel:
+- `REACT_APP_API_URL` = `https://jobtrackai.duckdns.org/learn`
 
-### 5. Start the Backend Server
+## 🎯 Supported File Types
 
-In a new terminal:
+**Videos:** .mp4, .avi, .mkv, .mov, .wmv, .flv, .webm, .m4v
+**Documents:** .pdf, .doc, .docx, .txt, .ppt, .pptx, .xls, .xlsx, .zip, .rar
+
+## 🏗️ Project Structure
+
+```
+StreamingService/
+├── app_enhanced.py          # Enhanced Flask backend
+├── database_enhanced.py     # Enhanced database schema
+├── folder_scanner.py        # Automatic course importer
+├── config.py               # Configuration
+├── requirements.txt        # Python dependencies
+├── Dockerfile              # Docker container config
+├── docker-compose.yml      # Traefik integration
+├── .env                    # Environment variables
+└── client/                 # React frontend
+    ├── src/
+    ├── package.json
+    └── vercel.json
+```
+
+## 📚 Documentation
+
+- **[QUICK_START.md](QUICK_START.md)** - 5-minute setup guide
+- **[TRAEFIK_INTEGRATION.md](TRAEFIK_INTEGRATION.md)** - Detailed Traefik configuration
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Complete deployment instructions
+- **[MIGRATION_CLEANUP.md](MIGRATION_CLEANUP.md)** - Cleanup old files guide
+
+## 🔧 Common Tasks
+
+### Adding New Courses
 
 ```bash
-# Make sure you're in the project root directory
-python app.py
+# 1. Add folders to CourseMedia/
+# 2. Rescan
+docker exec learning-platform-backend python folder_scanner.py --rescan
+# 3. Refresh browser
 ```
 
-The Flask server will run at http://localhost:5000
+### Viewing Logs
 
-## Making It Accessible Over the Internet
-
-To access your learning platform from anywhere on the internet, you have several options:
-
-### Option 1: Using ngrok (Recommended for Testing)
-
-1. Download ngrok from https://ngrok.com/
-2. Install and authenticate ngrok
-3. Run your Flask server: `python app.py`
-4. In another terminal, run: `ngrok http 5000`
-5. ngrok will provide a public URL like `https://abc123.ngrok.io`
-6. Update your React app's proxy or API calls to use this URL
-
-### Option 2: Using Cloudflare Tunnel (Free)
-
-1. Install Cloudflare Tunnel: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/
-2. Run: `cloudflared tunnel --url http://localhost:5000`
-3. You'll get a public URL that tunnels to your local server
-
-### Option 3: Port Forwarding (Requires Router Access)
-
-1. Find your local IP address
-2. Access your router settings
-3. Forward port 5000 to your computer's local IP
-4. Use your public IP address to access the server
-5. Consider using a dynamic DNS service for a consistent URL
-
-### Option 4: Deploy to a Cloud Server
-
-For production use, deploy to:
-- AWS EC2
-- Google Cloud Compute Engine
-- DigitalOcean Droplet
-- Heroku
-- Azure VM
-
-**Security Warning**: When exposing your server to the internet:
-- Add authentication/login system
-- Use HTTPS/SSL certificates
-- Implement rate limiting
-- Add firewall rules
-- Keep your software updated
-- Don't expose sensitive files
-
-## Configuration
-
-Edit `.env` file to configure:
-
-```env
-PORT=5000                                    # Backend server port
-MEDIA_PATH=C:/Users/anant/Desktop/CourseMedia  # Path to your videos/documents
-DB_PATH=database.db                          # SQLite database file
+```bash
+docker logs learning-platform-backend -f
 ```
 
-## API Endpoints
+### Restarting Service
 
-- `GET /api/courses` - Get all courses
+```bash
+docker-compose restart learning-platform-backend
+```
+
+### Database Reset
+
+```bash
+# WARNING: Deletes all progress data
+rm -rf data/database.db
+docker-compose restart learning-platform-backend
+docker exec learning-platform-backend python folder_scanner.py
+```
+
+## 🌐 URLs
+
+**Development:**
+- Backend: `http://localhost:5000/api/*`
+- Frontend: `http://localhost:3000`
+
+**Production:**
+- Backend: `https://jobtrackai.duckdns.org/learn/api/*`
+- Frontend: `https://your-app.vercel.app`
+- Traefik Dashboard: `http://localhost:8080`
+
+## 🔍 API Endpoints
+
+- `GET /api/courses` - List all courses with progress
 - `GET /api/courses/:id` - Get course details with lessons
-- `GET /api/lessons/:id` - Get lesson details with resources
-- `GET /api/video/:lessonId` - Stream video (supports range requests)
-- `GET /api/document/:resourceId` - Download/view document
-- `POST /api/progress` - Update user progress
-- `GET /api/progress/:lessonId` - Get user progress
+- `GET /api/lessons/:id` - Get lesson with files
+- `GET /api/stream/:id` - Stream video file
+- `GET /api/document/:id` - Download document
+- `POST /api/progress` - Update watch progress
+- `GET /api/stats` - Platform statistics
+- `GET /api/health` - Health check
 
-## Supported File Types
+## 🐛 Troubleshooting
 
-### Videos
-- MP4 (recommended)
-- WebM
-- OGG
-
-### Documents
-- PDF
-- DOCX
-- TXT
-- XLSX
-- PPTX
-- ZIP
-
-## Troubleshooting
+### Container won't start
+```bash
+docker logs learning-platform-backend
+# Check media path exists
+# Check permissions on data/ directory
+```
 
 ### Videos won't play
-- Ensure video files exist in the MEDIA_PATH directory
-- Check file paths in database match actual file locations
-- Verify video format is supported (MP4 recommended)
-- Check browser console for errors
+- Use MP4 format for best compatibility
+- Check file exists in CourseMedia folder
+- Verify path in database matches actual file
 
-### Can't connect to backend
-- Ensure Flask server is running on port 5000
-- Check `.env` file configuration
-- Verify no firewall is blocking the connection
-
-### Database errors
-- Run `python database.py` to reinitialize
-- Check file permissions
-- Ensure SQLite is installed
-
-## Development
-
+### Can't access from internet
 ```bash
-# Backend (with auto-reload)
-pip install python-dotenv flask flask-cors
-python app.py
+# Check Traefik routing
+docker logs jobtrak-traefik
 
-# Frontend (with hot reload)
-cd client
-npm start
+# Verify container is on correct network
+docker network inspect jobtrak-network
+
+# Test direct access
+curl http://localhost:5000/api/health
 ```
 
-## Production Build
+### CORS errors
+- Flask CORS is configured in `app_enhanced.py`
+- Add your Vercel domain if needed
+- Check browser console for specific errors
 
-```bash
-# Build React frontend
-cd client
-npm run build
+## 🔒 Security Notes
 
-# The build folder can be served by Flask or any web server
-# You can modify app.py to serve the React build in production
-```
+**For Production:**
+- Add authentication system
+- Use HTTPS (handled by Traefik)
+- Implement rate limiting
+- Set proper file permissions
+- Regular backups of database
 
-## License
+## 📦 Tech Stack
+
+**Backend:**
+- Python 3.11
+- Flask
+- SQLite
+- Docker
+
+**Frontend:**
+- React 18
+- React Router
+- Axios
+- Vercel
+
+**Infrastructure:**
+- Traefik (reverse proxy)
+- DuckDNS (domain)
+- Let's Encrypt (SSL)
+
+## 🤝 Contributing
+
+This is a personal project, but suggestions are welcome!
+
+## 📄 License
 
 MIT
 
-## Support
+## 🎓 Use Cases
 
-For issues and questions, refer to the code comments and Flask/React documentation.
+- Personal course library
+- Internal training materials
+- Educational content streaming
+- Video documentation hosting
+- E-learning platform prototype
+
+## ⚡ Performance Tips
+
+1. **Use MP4 format** for best browser compatibility
+2. **Compress videos** for faster streaming
+3. **Keep database on SSD** for better performance
+4. **Use path-based routing** to avoid subdomain complexity
+5. **Regular database cleanup** for old progress data
+
+## 🔮 Future Enhancements
+
+- [ ] User authentication system
+- [ ] Multiple user support
+- [ ] Quiz/assessment system
+- [ ] Course certificates
+- [ ] Video quality selection
+- [ ] Subtitles support
+- [ ] Mobile app
+- [ ] Admin dashboard
+
+---
+
+**Made with** ❤️ **for self-hosted learning**
+
+For issues or questions, check the documentation files or create an issue.

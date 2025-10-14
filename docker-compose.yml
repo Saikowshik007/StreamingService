@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  learning-platform-backend:
+    build: .
+    container_name: learning-platform-backend
+    restart: unless-stopped
+    environment:
+      - FLASK_APP=app_enhanced.py
+      - FLASK_ENV=production
+      - MEDIA_PATH=/media
+      - PORT=5000
+      - DB_PATH=/app/data/database.db
+    volumes:
+      # Mount your course media folder (READ-ONLY for safety)
+      - C:/Users/anant/Desktop/CourseMedia:/media:ro
+      # Mount database directory (READ-WRITE)
+      - ./data:/app/data
+    networks:
+      - jobtrak-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      - "traefik.http.routers.learning.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+
+      - "traefik.http.routers.learning.entrypoints=websecure"
+      - "traefik.http.routers.learning.tls=true"
+      - "traefik.http.routers.learning.tls.certresolver=letsencrypt"
+
+      # Service
+      - "traefik.http.services.learning.loadbalancer.server.port=5000"
+
+      # Health check for load balancer
+      - "traefik.http.services.learning.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.learning.loadbalancer.healthcheck.interval=10s"
+
+      # Strip prefix middleware (if using path-based routing)
+      - "traefik.http.middlewares.learning-stripprefix.stripprefix.prefixes=/learn"
+      - "traefik.http.routers.learning.middlewares=learning-stripprefix"
+
+      # HTTP to HTTPS redirect
+      - "traefik.http.routers.learning-http.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+      - "traefik.http.routers.learning-http.entrypoints=web"
+      - "traefik.http.middlewares.learning-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.learning-https-redirect.redirectscheme.permanent=true"
+      - "traefik.http.routers.learning-http.middlewares=learning-https-redirect"
+
+networks:
+  jobtrak-network:
+    external: true

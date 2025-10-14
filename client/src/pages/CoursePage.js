@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
+import API_URL from '../config';
 import './CoursePage.css';
 
 function CoursePage() {
@@ -15,7 +16,7 @@ function CoursePage() {
 
   const fetchCourse = async () => {
     try {
-      const response = await axios.get(`/api/courses/${courseId}`);
+      const response = await axios.get(`${API_URL}/api/courses/${courseId}`);
       setCourse(response.data);
       setLoading(false);
     } catch (err) {

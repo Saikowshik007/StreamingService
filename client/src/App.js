@@ -4,7 +4,7 @@ import './App.css';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import CoursePage from './pages/CoursePage';
-import LessonPlayer from './pages/LessonPlayer';
+import LessonPlayerEnhanced from './pages/LessonPlayerEnhanced';
 
 function App() {
   return (
@@ -14,7 +14,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/course/:courseId" element={<CoursePage />} />
-          <Route path="/lesson/:lessonId" element={<LessonPlayer />} />
+          <Route path="/lesson/:lessonId" element={<LessonPlayerEnhanced />} />
         </Routes>
       </div>
     </Router>

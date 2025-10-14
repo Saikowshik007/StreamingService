@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import API_URL from '../config';
 import './Home.css';
 
 function Home() {
@@ -14,7 +15,7 @@ function Home() {
 
   const fetchCourses = async () => {
     try {
-      const response = await axios.get('/api/courses');
+      const response = await axios.get(`${API_URL}/api/courses`);
       setCourses(response.data);
       setLoading(false);
     } catch (err) {
@@ -61,6 +62,22 @@ function Home() {
                   <h3 className="course-title">{course.title}</h3>
                   <p className="course-instructor">{course.instructor}</p>
                   <p className="course-description">{course.description}</p>
+                  {course.progress_percentage !== null && course.progress_percentage !== undefined && (
+                    <div className="course-progress">
+                      <div className="progress-bar">
+                        <div
+                          className="progress-fill"
+                          style={{width: `${course.progress_percentage}%`}}
+                        ></div>
+                      </div>
+                      <span className="progress-text">
+                        {Math.round(course.progress_percentage)}% Complete
+                        {course.completed_files && course.progress_total_files &&
+                          ` (${course.completed_files}/${course.progress_total_files} files)`
+                        }
+                      </span>
+                    </div>
+                  )}
                 </div>
               </Link>
             ))}
