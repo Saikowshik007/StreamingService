@@ -2,6 +2,7 @@ from flask import Flask, request, send_file, jsonify, Response
 from flask_cors import CORS
 import os
 import mimetypes
+import logging
 from pathlib import Path
 from config import Config
 from database_enhanced import (
@@ -10,23 +11,98 @@ from database_enhanced import (
 )
 from folder_scanner import scan_and_import
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 
-# Configure CORS to allow Vercel frontend
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "http://localhost:3000",
-            "https://streaming-service.vercel.app",
-            "https://*.vercel.app",
-            "https://jobtrackai.duckdns.org"
-        ],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
-        "expose_headers": ["Content-Range", "Accept-Ranges", "Content-Length"],
-        "supports_credentials": True
+def get_allowed_origins():
+    """Get the list of allowed CORS origins."""
+    origins = [
+        # Production origins - EXACT MATCHES
+        "https://streaming-service.vercel.app",
+        "https://jobtrackai.duckdns.org",
+        "http://jobtrackai.duckdns.org",
+
+        # Development origins
+        "http://localhost",
+        "https://localhost",
+        "http://localhost:3000",
+        "https://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://127.0.0.1:3000",
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+
+        # NULL origin for direct requests
+        "null",
+    ]
+
+    # Add debug origins if in debug mode
+    if os.environ.get('FLASK_DEBUG') or os.environ.get('DEBUG'):
+        debug_origins = [
+            "http://localhost:3001",
+            "http://localhost:3002",
+        ]
+        origins.extend(debug_origins)
+
+    # Add any additional origins from environment variable
+    env_origins = os.environ.get('ADDITIONAL_CORS_ORIGINS', '')
+    if env_origins:
+        additional_origins = [origin.strip() for origin in env_origins.split(',')]
+        origins.extend(additional_origins)
+
+    logger.info(f"CORS allowed origins: {origins}")
+    return origins
+
+# Configure CORS with comprehensive settings
+CORS(app,
+    resources={
+        r"/*": {
+            "origins": get_allowed_origins(),
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+            "allow_headers": [
+                "Accept",
+                "Accept-Language",
+                "Content-Language",
+                "Content-Type",
+                "Authorization",
+                "Cache-Control",
+                "DNT",
+                "If-Modified-Since",
+                "Keep-Alive",
+                "Origin",
+                "User-Agent",
+                "X-Requested-With",
+                "Range",
+                "Referer",
+                "X-Api-Key",
+                "x-api-key",
+                "X-CSRF-Token",
+                "X-Forwarded-For",
+                "X-Forwarded-Proto",
+                "X-Real-IP",
+                "X-Vercel-Id",
+                "X-Deployment-Id",
+            ],
+            "expose_headers": [
+                "Content-Range",
+                "Accept-Ranges",
+                "Content-Length",
+                "X-Content-Range",
+                "X-Total-Count",
+                "Access-Control-Allow-Origin",
+                "Access-Control-Allow-Credentials"
+            ],
+            "supports_credentials": True,
+            "max_age": 3600
+        }
     }
-})
+)
 
 # Initialize database
 init_enhanced_db()
@@ -364,11 +440,23 @@ def get_stats():
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
+    """Enhanced health check endpoint"""
     return jsonify({
-        'status': 'ok',
+        'status': 'healthy',
         'media_path': Config.MEDIA_PATH,
-        'db_path': Config.DB_PATH
+        'db_path': Config.DB_PATH,
+        'cors_enabled': True,
+        'version': '1.0.0'
+    })
+
+@app.route('/api/cors-test', methods=['GET'])
+def cors_test():
+    """Test endpoint specifically for CORS debugging"""
+    return jsonify({
+        'message': 'CORS test successful',
+        'origin_allowed': True,
+        'cors_origins': get_allowed_origins(),
+        'status': 'ok'
     })
 
 if __name__ == '__main__':
