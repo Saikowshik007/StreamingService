@@ -14,14 +14,16 @@ app = Flask(__name__)
 
 # Configure CORS to allow Vercel frontend
 CORS(app, resources={
-    r"/api/*": {
+    r"/*": {
         "origins": [
             "http://localhost:3000",
+            "https://streaming-service.vercel.app",
             "https://*.vercel.app",
             "https://jobtrackai.duckdns.org"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
+        "expose_headers": ["Content-Range", "Accept-Ranges", "Content-Length"],
         "supports_credentials": True
     }
 })

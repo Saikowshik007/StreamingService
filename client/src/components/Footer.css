@@ -1,0 +1,25 @@
+.footer {
+  background-color: #2d2f31;
+  color: white;
+  padding: 20px 0;
+  margin-top: auto;
+  width: 100%;
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 0 20px;
+}
+
+.footer-content p {
+  margin: 0;
+  font-size: 1rem;
+  color: #fff;
+  opacity: 0.9;
+}
+
+.footer-content p:hover {
+  opacity: 1;
+}
