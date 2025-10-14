@@ -11,7 +11,6 @@ COPY app.py .
 COPY config.py .
 COPY database_enhanced.py .
 COPY folder_scanner.py .
-COPY .env .
 
 # Create directory for database
 RUN mkdir -p /app/data
