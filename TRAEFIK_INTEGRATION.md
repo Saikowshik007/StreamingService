@@ -293,7 +293,7 @@ services:
     container_name: learning-platform-backend
     restart: unless-stopped
     environment:
-      - FLASK_APP=app_enhanced.py
+      - FLASK_APP=app.py
       - FLASK_ENV=production
       - MEDIA_PATH=/media
       - PORT=5000

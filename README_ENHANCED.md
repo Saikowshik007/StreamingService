@@ -84,7 +84,7 @@ The scanner will:
 
 ```bash
 # Using the enhanced version
-python app_enhanced.py
+python app.py
 
 # Or use the original if you want manual course management
 python app.py
@@ -199,7 +199,7 @@ After finishing a video:
 
 ```bash
 # Start your Flask server
-python app_enhanced.py
+python app.py
 
 # In another terminal
 ngrok http 5000
@@ -335,7 +335,7 @@ StreamingService/
 
 ```bash
 # Backend with auto-reload
-python app_enhanced.py
+python app.py
 
 # Frontend with hot reload
 cd client

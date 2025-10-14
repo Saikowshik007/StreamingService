@@ -130,7 +130,7 @@ sudo systemctl restart nginx
 
 ```bash
 # Start Flask backend (keep running on port 5000)
-python app_enhanced.py
+python app.py
 
 # Start Nginx (Windows)
 cd C:\nginx

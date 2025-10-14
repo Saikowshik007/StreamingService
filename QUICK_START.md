@@ -46,7 +46,7 @@ This will automatically:
 ### 5. Start Backend
 
 ```bash
-python app_enhanced.py
+python app.py
 ```
 
 Backend runs at: http://localhost:5000

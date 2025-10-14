@@ -160,7 +160,7 @@ On your PC, start the Flask backend:
 
 ```bash
 # Make sure you're in the project root
-python app_enhanced.py
+python app.py
 
 # The server should run on port 5000
 # It should be accessible at https://jobtrackai.duckdns.org:5000
@@ -283,7 +283,7 @@ cd client
 npm start  # Frontend on http://localhost:3000
 
 # In another terminal
-python app_enhanced.py  # Backend on http://localhost:5000
+python app.py  # Backend on http://localhost:5000
 
 # Scan new courses
 python folder_scanner.py --rescan
