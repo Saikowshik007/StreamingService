@@ -7,6 +7,11 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
+    # Force this container to ONLY use jobtrak-network
+    networks:
+      jobtrak-network:
+        aliases:
+          - learning-backend
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=production
@@ -16,8 +21,6 @@ services:
     volumes:
       - C:/Users/anant/Desktop/CourseMedia:/media:ro
       - ./data:/app/data
-    networks:
-      - jobtrak-network
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
       interval: 30s
