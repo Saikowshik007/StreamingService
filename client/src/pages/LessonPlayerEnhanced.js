@@ -12,6 +12,7 @@ function LessonPlayerEnhanced() {
   const [error, setError] = useState(null);
   const videoRef = useRef(null);
   const progressInterval = useRef(null);
+  const shouldSeek = useRef(true);
 
   const updateProgress = useCallback(async () => {
     if (!currentFile || !currentFile.is_video || !videoRef.current) return;
@@ -29,7 +30,8 @@ function LessonPlayerEnhanced() {
         completed
       });
 
-      // Update local state
+      // Update local state without triggering seek
+      shouldSeek.current = false;
       setCurrentFile(prev => ({
         ...prev,
         progress_seconds,
@@ -74,10 +76,11 @@ function LessonPlayerEnhanced() {
     if (currentFile && currentFile.is_video && videoRef.current) {
       const video = videoRef.current;
 
-      // Seek to saved position
-      if (currentFile.progress_seconds && currentFile.progress_seconds > 0) {
+      // Seek to saved position only if this is a real file change
+      if (shouldSeek.current && currentFile.progress_seconds && currentFile.progress_seconds > 0) {
         video.currentTime = currentFile.progress_seconds;
       }
+      shouldSeek.current = true; // Reset for next time
 
       // Update progress every 5 seconds
       progressInterval.current = setInterval(() => {

@@ -287,8 +287,8 @@ def stream_file(file_id):
     file_size = os.path.getsize(video_path)
     range_header = request.headers.get('Range', None)
 
-    if not range_header:
-        return send_file(video_path, mimetype='video/mp4')
+    # Define chunk size for streaming (1MB)
+    CHUNK_SIZE = 1024 * 1024
 
     # Parse range header
     byte_start = 0
@@ -297,18 +297,28 @@ def stream_file(file_id):
     if range_header:
         range_match = range_header.replace('bytes=', '').split('-')
         byte_start = int(range_match[0]) if range_match[0] else 0
-        byte_end = int(range_match[1]) if range_match[1] else byte_end
+        byte_end = int(range_match[1]) if len(range_match) > 1 and range_match[1] else byte_end
 
     length = byte_end - byte_start + 1
 
-    with open(video_path, 'rb') as video_file:
-        video_file.seek(byte_start)
-        data = video_file.read(length)
+    def generate():
+        """Generator to stream file in chunks"""
+        with open(video_path, 'rb') as video_file:
+            video_file.seek(byte_start)
+            remaining = length
+            while remaining > 0:
+                chunk_size = min(CHUNK_SIZE, remaining)
+                data = video_file.read(chunk_size)
+                if not data:
+                    break
+                remaining -= len(data)
+                yield data
 
-    response = Response(data, 206, mimetype='video/mp4', direct_passthrough=True)
+    response = Response(generate(), 206 if range_header else 200, mimetype='video/mp4')
     response.headers.add('Content-Range', f'bytes {byte_start}-{byte_end}/{file_size}')
     response.headers.add('Accept-Ranges', 'bytes')
     response.headers.add('Content-Length', str(length))
+    response.headers.add('Cache-Control', 'public, max-age=3600')
 
     return response
 
