@@ -11,6 +11,7 @@ from folder_scanner import scan_and_import
 from folder_watcher import start_watcher, stop_watcher, get_watcher
 from thumbnail_generator import generate_thumbnail_for_file, check_ffmpeg
 from auth_service import require_auth, optional_auth
+from url_signer import generate_signed_url, verify_signed_url, parse_signed_params
 
 # Configure logging
 logging.basicConfig(
@@ -174,12 +175,55 @@ def get_file_info(file_id):
 
     return jsonify(file)
 
-@api_bp.route('/api/stream/<file_id>', methods=['GET'])
+@api_bp.route('/api/stream/signed-url/<file_id>', methods=['GET'])
 @require_auth
-def stream_file(file_id):
-    """Stream video file with range request support"""
+def get_signed_stream_url(file_id):
+    """
+    Generate a signed URL for streaming a video file.
+    This allows the video player to access the stream without custom headers.
+    """
     user_id = request.current_user['uid']
+
+    # Verify the file exists and user has access
     file = db.get_file_by_id(file_id, user_id)
+    if not file or not file.get('is_video'):
+        return jsonify({'error': 'Video file not found'}), 404
+
+    # Generate signed URL parameters
+    signature, expiration = generate_signed_url(file_id)
+
+    # Return the signed URL components
+    return jsonify({
+        'file_id': file_id,
+        'signature': signature,
+        'expires': expiration,
+        'url': f"/learn/api/stream/{file_id}?signature={signature}&expires={expiration}"
+    })
+
+@api_bp.route('/api/stream/<file_id>', methods=['GET'])
+@optional_auth
+def stream_file(file_id):
+    """
+    Stream video file with range request support.
+    Accepts either:
+    1. Bearer token authentication (Authorization header)
+    2. Signed URL parameters (signature and expires query params)
+    """
+    # Check for signed URL parameters first
+    signed_params = parse_signed_params(request.args)
+    if signed_params:
+        signature, expiration = signed_params
+        if not verify_signed_url(file_id, signature, expiration):
+            return jsonify({'error': 'Invalid or expired signature'}), 401
+        # Signed URL is valid, get file without user_id check
+        file = db.get_file_by_id(file_id)
+    elif hasattr(request, 'current_user') and request.current_user:
+        # Bearer token authentication
+        user_id = request.current_user['uid']
+        file = db.get_file_by_id(file_id, user_id)
+    else:
+        # No authentication provided
+        return jsonify({'error': 'Authentication required'}), 401
 
     if not file or not file.get('is_video'):
         return jsonify({'error': 'Video file not found'}), 404

@@ -9,6 +9,7 @@ function LessonPlayerEnhanced() {
   const [currentFile, setCurrentFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [videoUrl, setVideoUrl] = useState(null);
   const videoRef = useRef(null);
   const progressInterval = useRef(null);
   const shouldSeek = useRef(true);
@@ -75,6 +76,30 @@ function LessonPlayerEnhanced() {
     }
   }, [lesson, currentFile]);
 
+  // Fetch signed URL when currentFile changes
+  useEffect(() => {
+    const fetchSignedUrl = async () => {
+      if (!currentFile || !currentFile.is_video) {
+        setVideoUrl(null);
+        return;
+      }
+
+      try {
+        const response = await authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`);
+        const data = await response.json();
+
+        // Construct full URL with signature and expiration
+        const signedUrl = `${API_URL}${data.url}`;
+        setVideoUrl(signedUrl);
+      } catch (err) {
+        console.error('Failed to fetch signed URL:', err);
+        setError('Failed to load video URL');
+      }
+    };
+
+    fetchSignedUrl();
+  }, [currentFile]);
+
   useEffect(() => {
     if (currentFile && currentFile.is_video && videoRef.current) {
       const video = videoRef.current;
@@ -140,18 +165,21 @@ function LessonPlayerEnhanced() {
       <div className="player-layout">
         <div className="main-content">
           <div className="video-container">
-            {currentFile && currentFile.is_video ? (
+            {currentFile && currentFile.is_video && videoUrl ? (
             <video
               key={currentFile?.id}
               ref={videoRef}
               controls
               className="video-player"
-              crossOrigin="use-credentials"
-              src={`${API_URL}/api/stream/${currentFile.id}`}
+              src={videoUrl}
               onEnded={handleVideoEnd}
               onPause={updateProgress}
               preload="metadata"
             />
+            ) : currentFile && currentFile.is_video ? (
+              <div className="no-video">
+                <p>Loading video...</p>
+              </div>
             ) : (
               <div className="no-video">
                 <p>Select a video to start watching</p>
