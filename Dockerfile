@@ -12,6 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy all Python application files
 COPY *.py .
 
+COPY firebase-credentials.json .
+
 # Create media directory
 RUN mkdir -p /media
 
