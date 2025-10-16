@@ -6,7 +6,7 @@ services:
     container_name: learning-platform-backend
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5000:5000"  # Keep for local testing
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=production
@@ -19,7 +19,7 @@ services:
       # Mount database directory (READ-WRITE)
       - ./data:/app/data
     networks:
-      - jobtrak-network
+      - jobtrak-network  # Connect to the external network
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
       interval: 30s
@@ -30,18 +30,18 @@ services:
       # Enable Traefik
       - "traefik.enable=true"
 
-      # HTTPS Router with highest priority
-      - "traefik.http.routers.learning-platform.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
-      - "traefik.http.routers.learning-platform.entrypoints=websecure"
-      - "traefik.http.routers.learning-platform.tls=true"
-      - "traefik.http.routers.learning-platform.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.learning-platform.priority=200"
+      # HTTPS Router with HIGHEST PRIORITY (higher than API's priority)
+      - "traefik.http.routers.learning.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+      - "traefik.http.routers.learning.entrypoints=websecure"
+      - "traefik.http.routers.learning.tls=true"
+      - "traefik.http.routers.learning.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.learning.priority=200"
 
-      # Service configuration - make it unique
+      # Service configuration - unique service name
       - "traefik.http.services.learning-backend.loadbalancer.server.port=5000"
-      - "traefik.http.routers.learning-platform.service=learning-backend"
+      - "traefik.http.routers.learning.service=learning-backend"
 
-      # Health check
+      # Health check for load balancer
       - "traefik.http.services.learning-backend.loadbalancer.healthcheck.path=/api/health"
       - "traefik.http.services.learning-backend.loadbalancer.healthcheck.interval=10s"
       - "traefik.http.services.learning-backend.loadbalancer.healthcheck.timeout=5s"
@@ -49,7 +49,7 @@ services:
       # Strip /learn prefix middleware
       - "traefik.http.middlewares.learning-strip.stripprefix.prefixes=/learn"
 
-      # CORS middleware
+      # CORS headers middleware
       - "traefik.http.middlewares.learning-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD"
       - "traefik.http.middlewares.learning-cors.headers.accesscontrolalloworiginlist=https://streaming-service.vercel.app,https://jobtrackai.duckdns.org,http://localhost:3000"
       - "traefik.http.middlewares.learning-cors.headers.accesscontrolallowcredentials=true"
@@ -57,17 +57,17 @@ services:
       - "traefik.http.middlewares.learning-cors.headers.accesscontrolexposeheaders=Content-Length,Content-Range,Accept-Ranges"
       - "traefik.http.middlewares.learning-cors.headers.accesscontrolmaxage=3600"
 
-      # Apply middlewares: strip prefix first, then CORS
-      - "traefik.http.routers.learning-platform.middlewares=learning-strip,learning-cors"
+      # Apply middlewares: strip prefix FIRST, then CORS
+      - "traefik.http.routers.learning.middlewares=learning-strip,learning-cors"
 
       # HTTP to HTTPS redirect
-      - "traefik.http.routers.learning-platform-http.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
-      - "traefik.http.routers.learning-platform-http.entrypoints=web"
-      - "traefik.http.routers.learning-platform-http.priority=200"
+      - "traefik.http.routers.learning-http.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+      - "traefik.http.routers.learning-http.entrypoints=web"
+      - "traefik.http.routers.learning-http.priority=200"
       - "traefik.http.middlewares.learning-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.learning-redirect.redirectscheme.permanent=true"
-      - "traefik.http.routers.learning-platform-http.middlewares=learning-redirect"
+      - "traefik.http.routers.learning-http.middlewares=learning-redirect"
 
 networks:
   jobtrak-network:
-    external: true
+    external: true  # Use the existing network from JobTrak
