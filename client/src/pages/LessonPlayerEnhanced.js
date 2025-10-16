@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import axios from 'axios';
-import API_URL from '../config';
+import API_URL, { authenticatedFetch } from '../config';
 import './LessonPlayerEnhanced.css';
 
 function LessonPlayerEnhanced() {
@@ -23,11 +22,14 @@ function LessonPlayerEnhanced() {
     const completed = video.currentTime >= video.duration - 2;
 
     try {
-      await axios.post(`${API_URL}/api/progress`, {
-        file_id: currentFile.id,
-        progress_seconds,
-        progress_percentage,
-        completed
+      await authenticatedFetch(`${API_URL}/learn/api/progress`, {
+        method: 'POST',
+        body: JSON.stringify({
+          file_id: currentFile.id,
+          progress_seconds,
+          progress_percentage,
+          completed
+        })
       });
 
       // Update local state without triggering seek
@@ -46,8 +48,9 @@ function LessonPlayerEnhanced() {
   useEffect(() => {
     const fetchLesson = async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/lessons/${lessonId}`);
-        setLesson(response.data);
+        const response = await authenticatedFetch(`${API_URL}/learn/api/lessons/${lessonId}`);
+        const data = await response.json();
+        setLesson(data);
         setLoading(false);
       } catch (err) {
         setError('Failed to load lesson.');

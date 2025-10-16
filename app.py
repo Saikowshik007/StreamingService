@@ -10,6 +10,7 @@ import firebase_service as db
 from folder_scanner import scan_and_import
 from folder_watcher import start_watcher, stop_watcher, get_watcher
 from thumbnail_generator import generate_thumbnail_for_file, check_ffmpeg
+from auth_service import require_auth, optional_auth
 
 # Configure logging
 logging.basicConfig(
@@ -121,16 +122,18 @@ atexit.register(stop_watcher)
 
 
 @api_bp.route('/api/courses', methods=['GET'])
+@require_auth
 def get_courses():
     """Get all courses with progress"""
-    user_id = request.args.get('user_id', 'default_user')
+    user_id = request.current_user['uid']
     courses = db.get_all_courses(user_id)
     return jsonify(courses)
 
 @api_bp.route('/api/courses/<course_id>', methods=['GET'])
+@require_auth
 def get_course(course_id):
     """Get a specific course with lessons and files"""
-    user_id = request.args.get('user_id', 'default_user')
+    user_id = request.current_user['uid']
 
     course = db.get_course_by_id(course_id)
     if not course:
@@ -148,9 +151,10 @@ def get_course(course_id):
     return jsonify(course)
 
 @api_bp.route('/api/lessons/<lesson_id>', methods=['GET'])
+@require_auth
 def get_lesson(lesson_id):
     """Get a specific lesson with files"""
-    user_id = request.args.get('user_id', 'default_user')
+    user_id = request.current_user['uid']
 
     lesson = db.get_lesson_by_id(lesson_id, user_id)
     if not lesson:
@@ -159,9 +163,10 @@ def get_lesson(lesson_id):
     return jsonify(lesson)
 
 @api_bp.route('/api/file/<file_id>', methods=['GET'])
+@require_auth
 def get_file_info(file_id):
     """Get file information"""
-    user_id = request.args.get('user_id', 'default_user')
+    user_id = request.current_user['uid']
 
     file = db.get_file_by_id(file_id, user_id)
     if not file:
@@ -170,9 +175,11 @@ def get_file_info(file_id):
     return jsonify(file)
 
 @api_bp.route('/api/stream/<file_id>', methods=['GET'])
+@require_auth
 def stream_file(file_id):
     """Stream video file with range request support"""
-    file = db.get_file_by_id(file_id)
+    user_id = request.current_user['uid']
+    file = db.get_file_by_id(file_id, user_id)
 
     if not file or not file.get('is_video'):
         return jsonify({'error': 'Video file not found'}), 404
@@ -221,9 +228,11 @@ def stream_file(file_id):
     return response
 
 @api_bp.route('/api/document/<file_id>', methods=['GET'])
+@require_auth
 def get_document(file_id):
     """Serve document files"""
-    file = db.get_file_by_id(file_id)
+    user_id = request.current_user['uid']
+    file = db.get_file_by_id(file_id, user_id)
 
     if not file or not file.get('is_document'):
         return jsonify({'error': 'Document not found'}), 404
@@ -252,10 +261,11 @@ def get_thumbnail(file_id):
     return jsonify({'thumbnail': thumbnail_base64})
 
 @api_bp.route('/api/progress', methods=['POST'])
+@require_auth
 def update_progress_endpoint():
     """Update user progress for a file"""
     data = request.json
-    user_id = data.get('user_id', 'default_user')
+    user_id = request.current_user['uid']
     file_id = data.get('file_id')
     progress_seconds = data.get('progress_seconds', 0)
     progress_percentage = data.get('progress_percentage', 0)
@@ -281,9 +291,10 @@ def update_progress_endpoint():
     return jsonify({'success': True})
 
 @api_bp.route('/api/progress/course/<course_id>', methods=['GET'])
+@require_auth
 def get_course_progress_endpoint(course_id):
     """Get course progress for a user"""
-    user_id = request.args.get('user_id', 'default_user')
+    user_id = request.current_user['uid']
     progress = db.get_course_progress(course_id, user_id)
     return jsonify(progress)
 
