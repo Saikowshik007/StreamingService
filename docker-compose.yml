@@ -1,29 +1,10 @@
-version: '3.8'
-
 services:
-  caddy:
-    image: caddy:latest
-    container_name: caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"  # HTTP/3
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - jobtrak-network
-
   learning-platform-backend:
     build: .
     container_name: learning-platform-backend
     restart: unless-stopped
     networks:
-      jobtrak-network:
-        aliases:
-          - learning-backend
+      - my-network
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=production
@@ -34,16 +15,13 @@ services:
       - C:/Users/anant/Desktop/CourseMedia:/media:ro
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/learn/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       start_period: 10s
       retries: 3
 
 networks:
-  jobtrak-network:
-    driver: bridge
-
-volumes:
-  caddy_data:
-  caddy_config:
+  my-network:
+    external: true  # Use the network created by Caddy
+    name: my-network
