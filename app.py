@@ -6,12 +6,10 @@ import logging
 import atexit
 from pathlib import Path
 from config import Config
-from database_enhanced import (
-    init_enhanced_db, get_db, get_course_stats,
-    update_course_progress
-)
+import firebase_service as db
 from folder_scanner import scan_and_import
 from folder_watcher import start_watcher, stop_watcher, get_watcher
+from thumbnail_generator import generate_thumbnail_for_file, check_ffmpeg
 
 # Configure logging
 logging.basicConfig(
@@ -110,8 +108,9 @@ CORS(app,
     }
 )
 
-# Initialize database
-init_enhanced_db()
+# Initialize Firebase
+logger.info("Initializing Firebase...")
+db.init_firebase()
 
 # Start automatic folder watcher
 logger.info("Starting automatic folder watcher...")
@@ -125,161 +124,60 @@ atexit.register(stop_watcher)
 def get_courses():
     """Get all courses with progress"""
     user_id = request.args.get('user_id', 'default_user')
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT c.*,
-               cp.progress_percentage,
-               cp.completed_files,
-               cp.total_files as progress_total_files
-        FROM courses c
-        LEFT JOIN course_progress cp ON c.id = cp.course_id AND cp.user_id = ?
-        ORDER BY c.created_at DESC
-    ''', (user_id,))
-
-    courses = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-
+    courses = db.get_all_courses(user_id)
     return jsonify(courses)
 
-@api_bp.route('/api/courses/<int:course_id>', methods=['GET'])
+@api_bp.route('/api/courses/<course_id>', methods=['GET'])
 def get_course(course_id):
     """Get a specific course with lessons and files"""
     user_id = request.args.get('user_id', 'default_user')
 
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # Get course
-    cursor.execute('''
-        SELECT c.*,
-               cp.progress_percentage,
-               cp.completed_files,
-               cp.total_files as progress_total_files
-        FROM courses c
-        LEFT JOIN course_progress cp ON c.id = cp.course_id AND cp.user_id = ?
-        WHERE c.id = ?
-    ''', (user_id, course_id))
-
-    course = cursor.fetchone()
+    course = db.get_course_by_id(course_id)
     if not course:
-        conn.close()
         return jsonify({'error': 'Course not found'}), 404
 
-    course_dict = dict(course)
+    # Get progress
+    progress = db.get_course_progress(course_id, user_id)
+    course['progress_percentage'] = progress.get('progress_percentage', 0)
+    course['completed_files'] = progress.get('completed_files', 0)
+    course['progress_total_files'] = progress.get('total_files', 0)
 
-    # Get lessons with their files
-    cursor.execute('''
-        SELECT l.*,
-               COUNT(f.id) as file_count,
-               SUM(CASE WHEN f.is_video = 1 THEN 1 ELSE 0 END) as video_count,
-               SUM(CASE WHEN f.is_document = 1 THEN 1 ELSE 0 END) as document_count
-        FROM lessons l
-        LEFT JOIN files f ON l.id = f.lesson_id
-        WHERE l.course_id = ?
-        GROUP BY l.id
-        ORDER BY l.order_index
-    ''', (course_id,))
+    # Get lessons with files
+    course['lessons'] = db.get_lessons_by_course(course_id, user_id)
 
-    lessons = []
-    for lesson_row in cursor.fetchall():
-        lesson = dict(lesson_row)
+    return jsonify(course)
 
-        # Get files for this lesson
-        cursor.execute('''
-            SELECT f.*,
-                   up.progress_seconds,
-                   up.progress_percentage,
-                   up.completed
-            FROM files f
-            LEFT JOIN user_progress up ON f.id = up.file_id AND up.user_id = ?
-            WHERE f.lesson_id = ?
-            ORDER BY f.order_index, f.filename
-        ''', (user_id, lesson['id']))
-
-        lesson['files'] = [dict(row) for row in cursor.fetchall()]
-        lessons.append(lesson)
-
-    course_dict['lessons'] = lessons
-    conn.close()
-
-    return jsonify(course_dict)
-
-@api_bp.route('/api/lessons/<int:lesson_id>', methods=['GET'])
+@api_bp.route('/api/lessons/<lesson_id>', methods=['GET'])
 def get_lesson(lesson_id):
     """Get a specific lesson with files"""
     user_id = request.args.get('user_id', 'default_user')
 
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT * FROM lessons WHERE id = ?', (lesson_id,))
-    lesson = cursor.fetchone()
-
+    lesson = db.get_lesson_by_id(lesson_id, user_id)
     if not lesson:
-        conn.close()
         return jsonify({'error': 'Lesson not found'}), 404
 
-    lesson_dict = dict(lesson)
+    return jsonify(lesson)
 
-    # Get files with progress
-    cursor.execute('''
-        SELECT f.*,
-               up.progress_seconds,
-               up.progress_percentage,
-               up.completed
-        FROM files f
-        LEFT JOIN user_progress up ON f.id = up.file_id AND up.user_id = ?
-        WHERE f.lesson_id = ?
-        ORDER BY f.order_index, f.filename
-    ''', (user_id, lesson_id))
-
-    lesson_dict['files'] = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-
-    return jsonify(lesson_dict)
-
-@api_bp.route('/api/file/<int:file_id>', methods=['GET'])
+@api_bp.route('/api/file/<file_id>', methods=['GET'])
 def get_file_info(file_id):
     """Get file information"""
     user_id = request.args.get('user_id', 'default_user')
 
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT f.*,
-               up.progress_seconds,
-               up.progress_percentage,
-               up.completed
-        FROM files f
-        LEFT JOIN user_progress up ON f.id = up.file_id AND up.user_id = ?
-        WHERE f.id = ?
-    ''', (user_id, file_id))
-
-    file = cursor.fetchone()
-    conn.close()
-
+    file = db.get_file_by_id(file_id, user_id)
     if not file:
         return jsonify({'error': 'File not found'}), 404
 
-    return jsonify(dict(file))
+    return jsonify(file)
 
-@api_bp.route('/api/stream/<int:file_id>', methods=['GET'])
+@api_bp.route('/api/stream/<file_id>', methods=['GET'])
 def stream_file(file_id):
     """Stream video file with range request support"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT file_path FROM files WHERE id = ? AND is_video = 1', (file_id,))
-    result = cursor.fetchone()
-    conn.close()
+    file = db.get_file_by_id(file_id)
 
-    if not result:
+    if not file or not file.get('is_video'):
         return jsonify({'error': 'Video file not found'}), 404
 
-    video_path = os.path.join(Config.MEDIA_PATH, result['file_path'])
+    video_path = os.path.join(Config.MEDIA_PATH, file['file_path'])
 
     if not os.path.exists(video_path):
         return jsonify({'error': 'Video file not found on disk'}), 404
@@ -322,19 +220,15 @@ def stream_file(file_id):
 
     return response
 
-@api_bp.route('/api/document/<int:file_id>', methods=['GET'])
+@api_bp.route('/api/document/<file_id>', methods=['GET'])
 def get_document(file_id):
     """Serve document files"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT file_path, filename FROM files WHERE id = ? AND is_document = 1', (file_id,))
-    result = cursor.fetchone()
-    conn.close()
+    file = db.get_file_by_id(file_id)
 
-    if not result:
+    if not file or not file.get('is_document'):
         return jsonify({'error': 'Document not found'}), 404
 
-    file_path = os.path.join(Config.MEDIA_PATH, result['file_path'])
+    file_path = os.path.join(Config.MEDIA_PATH, file['file_path'])
 
     if not os.path.exists(file_path):
         return jsonify({'error': 'Document file not found on disk'}), 404
@@ -342,8 +236,23 @@ def get_document(file_id):
     mimetype = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
     return send_file(file_path, mimetype=mimetype, as_attachment=False)
 
+@api_bp.route('/api/thumbnail/<file_id>', methods=['GET'])
+def get_thumbnail(file_id):
+    """Return thumbnail base64 data for a video file"""
+    file = db.get_file_by_id(file_id)
+
+    if not file:
+        return jsonify({'error': 'File not found'}), 404
+
+    thumbnail_base64 = file.get('thumbnail_base64')
+    if not thumbnail_base64:
+        return jsonify({'error': 'Thumbnail not available'}), 404
+
+    # Return the base64 data (already includes data:image/jpeg;base64, prefix)
+    return jsonify({'thumbnail': thumbnail_base64})
+
 @api_bp.route('/api/progress', methods=['POST'])
-def update_progress():
+def update_progress_endpoint():
     """Update user progress for a file"""
     data = request.json
     user_id = data.get('user_id', 'default_user')
@@ -352,58 +261,31 @@ def update_progress():
     progress_percentage = data.get('progress_percentage', 0)
     completed = data.get('completed', False)
 
-    conn = get_db()
-    cursor = conn.cursor()
-
     # Get file info
-    cursor.execute('SELECT lesson_id, course_id FROM files WHERE id = ?', (file_id,))
-    file_info = cursor.fetchone()
+    file_info = db.get_file_by_id(file_id)
 
     if not file_info:
-        conn.close()
         return jsonify({'error': 'File not found'}), 404
 
-    # Update or insert progress
-    cursor.execute('''
-        INSERT INTO user_progress
-        (user_id, file_id, lesson_id, course_id, progress_seconds, progress_percentage, completed, last_watched)
-        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(user_id, file_id) DO UPDATE SET
-            progress_seconds = excluded.progress_seconds,
-            progress_percentage = excluded.progress_percentage,
-            completed = excluded.completed,
-            last_watched = CURRENT_TIMESTAMP
-    ''', (user_id, file_id, file_info['lesson_id'], file_info['course_id'],
-          progress_seconds, progress_percentage, completed))
-
-    conn.commit()
-    conn.close()
-
-    # Update course progress
-    update_course_progress(file_info['course_id'], user_id)
+    # Update progress
+    db.update_user_progress(
+        user_id=user_id,
+        file_id=file_id,
+        lesson_id=file_info['lesson_id'],
+        course_id=file_info['course_id'],
+        progress_seconds=progress_seconds,
+        progress_percentage=progress_percentage,
+        completed=completed
+    )
 
     return jsonify({'success': True})
 
-@api_bp.route('/api/progress/course/<int:course_id>', methods=['GET'])
-def get_course_progress(course_id):
+@api_bp.route('/api/progress/course/<course_id>', methods=['GET'])
+def get_course_progress_endpoint(course_id):
     """Get course progress for a user"""
     user_id = request.args.get('user_id', 'default_user')
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT * FROM course_progress
-        WHERE user_id = ? AND course_id = ?
-    ''', (user_id, course_id))
-
-    result = cursor.fetchone()
-    conn.close()
-
-    if result:
-        return jsonify(dict(result))
-    else:
-        return jsonify({'progress_percentage': 0, 'completed_files': 0})
+    progress = db.get_course_progress(course_id, user_id)
+    return jsonify(progress)
 
 @api_bp.route('/api/scan', methods=['POST'])
 def scan_folders():
@@ -422,45 +304,16 @@ def scan_folders():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @api_bp.route('/api/scan/history', methods=['GET'])
-def get_scan_history():
+def get_scan_history_endpoint():
     """Get scan history"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM scan_history ORDER BY scan_timestamp DESC LIMIT 10')
-    history = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    history = db.get_scan_history(limit=10)
     return jsonify(history)
 
 @api_bp.route('/api/stats', methods=['GET'])
-def get_stats():
+def get_stats_endpoint():
     """Get overall statistics"""
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT COUNT(*) as total_courses FROM courses')
-    courses_count = cursor.fetchone()['total_courses']
-
-    cursor.execute('SELECT COUNT(*) as total_lessons FROM lessons')
-    lessons_count = cursor.fetchone()['total_lessons']
-
-    cursor.execute('SELECT COUNT(*) as total_files FROM files')
-    files_count = cursor.fetchone()['total_files']
-
-    cursor.execute('SELECT COUNT(*) as total_videos FROM files WHERE is_video = 1')
-    videos_count = cursor.fetchone()['total_videos']
-
-    cursor.execute('SELECT COUNT(*) as total_documents FROM files WHERE is_document = 1')
-    documents_count = cursor.fetchone()['total_documents']
-
-    conn.close()
-
-    return jsonify({
-        'courses': courses_count,
-        'lessons': lessons_count,
-        'files': files_count,
-        'videos': videos_count,
-        'documents': documents_count
-    })
+    stats = db.get_stats()
+    return jsonify(stats)
 
 @api_bp.route('/api/health', methods=['GET'])
 def health_check():
@@ -468,9 +321,9 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'media_path': Config.MEDIA_PATH,
-        'db_path': Config.DB_PATH,
+        'database': 'Firebase',
         'cors_enabled': True,
-        'version': '1.0.0'
+        'version': '2.0.0'
     })
 
 @api_bp.route('/api/cors-test', methods=['GET'])
@@ -491,6 +344,45 @@ def watcher_status():
         'active': watcher.is_active(),
         'watch_path': watcher.watch_path,
         'auto_scan_enabled': True
+    })
+
+@api_bp.route('/api/thumbnails/generate', methods=['POST'])
+def generate_thumbnails_endpoint():
+    """Generate thumbnails for all videos that don't have them"""
+    if not check_ffmpeg():
+        return jsonify({'error': 'ffmpeg not found. Please install ffmpeg to generate thumbnails.'}), 400
+
+    # Get all video files without thumbnails
+    videos = db.get_all_video_files_without_thumbnails()
+    total = len(videos)
+    generated = 0
+    failed = 0
+
+    logger.info(f"Starting thumbnail generation for {total} videos")
+
+    for video in videos:
+        video_full_path = os.path.join(Config.MEDIA_PATH, video['file_path'])
+
+        if not os.path.exists(video_full_path):
+            logger.warning(f"Video file not found: {video_full_path}")
+            failed += 1
+            continue
+
+        thumbnail_base64 = generate_thumbnail_for_file(video_full_path, video['filename'])
+
+        if thumbnail_base64:
+            db.update_file(video['id'], thumbnail_base64=thumbnail_base64)
+            generated += 1
+            logger.info(f"Generated thumbnail for: {video['filename']}")
+        else:
+            failed += 1
+            logger.error(f"Failed to generate thumbnail for: {video['filename']}")
+
+    return jsonify({
+        'success': True,
+        'total_videos': total,
+        'generated': generated,
+        'failed': failed
     })
 
 # Register the blueprint

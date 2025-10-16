@@ -188,7 +188,17 @@ function LessonPlayerEnhanced() {
                     className={`file-item ${currentFile?.id === file.id ? 'active' : ''} ${file.completed ? 'completed' : ''}`}
                     onClick={() => handleFileSelect(file)}
                   >
-                    <div className="file-number">{index + 1}</div>
+                    {file.thumbnail_base64 ? (
+                      <div className="file-thumbnail">
+                        <img
+                          src={file.thumbnail_base64}
+                          alt={file.filename}
+                          onError={(e) => e.target.style.display = 'none'}
+                        />
+                      </div>
+                    ) : (
+                      <div className="file-number">{index + 1}</div>
+                    )}
                     <div className="file-details">
                       <div className="file-name">{file.filename}</div>
                       {file.progress_percentage > 0 && (

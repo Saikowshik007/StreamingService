@@ -7,7 +7,8 @@ import os
 import time
 from pathlib import Path
 from config import Config
-from database_enhanced import get_db, init_enhanced_db, update_course_progress
+import firebase_service as db
+from thumbnail_generator import generate_thumbnail_for_file, check_ffmpeg
 
 # Supported file extensions
 VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v'}
@@ -110,18 +111,14 @@ def scan_folder_structure(base_path):
     return courses_data, files_found
 
 def import_to_database(courses_data, rescan=False):
-    """Import scanned data into database"""
-    conn = get_db()
-    cursor = conn.cursor()
-
+    """Import scanned data into Firebase"""
     courses_added = 0
     lessons_added = 0
     files_added = 0
 
     for course_name, course_info in courses_data.items():
         # Check if course exists
-        cursor.execute('SELECT id FROM courses WHERE folder_path = ?', (course_info['path'],))
-        existing_course = cursor.fetchone()
+        existing_course = db.get_course_by_folder_path(course_info['path'])
 
         if existing_course and not rescan:
             course_id = existing_course['id']
@@ -130,22 +127,21 @@ def import_to_database(courses_data, rescan=False):
             if existing_course:
                 course_id = existing_course['id']
                 # Update course
-                cursor.execute('''
-                    UPDATE courses SET
-                        title = ?,
-                        total_files = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                ''', (course_name, course_info['total_files'], course_id))
+                db.update_course(
+                    course_id,
+                    title=course_name,
+                    total_files=course_info['total_files']
+                )
                 print(f"Updated course: {course_name}")
             else:
-                # Insert new course
-                cursor.execute('''
-                    INSERT INTO courses (title, description, instructor, folder_path, total_files)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (course_name, f'Auto-imported from {course_info["path"]}',
-                      'Unknown', course_info['path'], course_info['total_files']))
-                course_id = cursor.lastrowid
+                # Create new course
+                course_id = db.create_course(
+                    title=course_name,
+                    description=f'Auto-imported from {course_info["path"]}',
+                    instructor='Unknown',
+                    folder_path=course_info['path'],
+                    total_files=course_info['total_files']
+                )
                 courses_added += 1
                 print(f"Added course: {course_name} (ID: {course_id})")
 
@@ -153,19 +149,17 @@ def import_to_database(courses_data, rescan=False):
         lesson_order = 1
         for lesson_name, lesson_info in course_info['lessons'].items():
             # Check if lesson exists
-            cursor.execute('''
-                SELECT id FROM lessons WHERE course_id = ? AND folder_path = ?
-            ''', (course_id, lesson_info['path']))
-            existing_lesson = cursor.fetchone()
+            existing_lesson = db.get_lesson_by_folder_path(course_id, lesson_info['path'])
 
             if existing_lesson:
                 lesson_id = existing_lesson['id']
             else:
-                cursor.execute('''
-                    INSERT INTO lessons (course_id, title, folder_path, order_index)
-                    VALUES (?, ?, ?, ?)
-                ''', (course_id, lesson_name, lesson_info['path'], lesson_order))
-                lesson_id = cursor.lastrowid
+                lesson_id = db.create_lesson(
+                    course_id=course_id,
+                    title=lesson_name,
+                    folder_path=lesson_info['path'],
+                    order_index=lesson_order
+                )
                 lessons_added += 1
                 print(f"  Added lesson: {lesson_name} (ID: {lesson_id})")
 
@@ -175,44 +169,53 @@ def import_to_database(courses_data, rescan=False):
             file_order = 1
             for file_info in lesson_info['files']:
                 # Check if file exists
-                cursor.execute('SELECT id FROM files WHERE file_path = ?', (file_info['path'],))
-                existing_file = cursor.fetchone()
+                existing_file = db.get_file_by_path(file_info['path'])
 
                 if existing_file:
+                    file_id = existing_file['id']
                     # Update file
-                    cursor.execute('''
-                        UPDATE files SET
-                            file_size = ?,
-                            last_scanned = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                    ''', (file_info['size'], existing_file['id']))
+                    db.update_file(file_id, file_size=file_info['size'])
+
+                    # Generate thumbnail if it's a video and doesn't have one
+                    if file_info['is_video'] and not existing_file.get('thumbnail_base64'):
+                        video_full_path = os.path.join(Config.MEDIA_PATH, file_info['path'])
+                        thumbnail_base64 = generate_thumbnail_for_file(video_full_path, file_info['filename'])
+                        if thumbnail_base64:
+                            db.update_file(file_id, thumbnail_base64=thumbnail_base64)
+                            print(f"    Generated thumbnail for: {file_info['filename']}")
                 else:
-                    # Insert new file
-                    cursor.execute('''
-                        INSERT INTO files
-                        (lesson_id, course_id, filename, file_path, file_type, file_size,
-                         is_video, is_document, order_index)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (lesson_id, course_id, file_info['filename'], file_info['path'],
-                          file_info['extension'], file_info['size'],
-                          file_info['is_video'], file_info['is_document'], file_order))
+                    # Generate thumbnail for new video files
+                    thumbnail_base64 = None
+                    if file_info['is_video']:
+                        video_full_path = os.path.join(Config.MEDIA_PATH, file_info['path'])
+                        thumbnail_base64 = generate_thumbnail_for_file(video_full_path, file_info['filename'])
+                        if thumbnail_base64:
+                            print(f"    Generated thumbnail for: {file_info['filename']}")
+
+                    # Create new file
+                    file_id = db.create_file(
+                        lesson_id=lesson_id,
+                        course_id=course_id,
+                        filename=file_info['filename'],
+                        file_path=file_info['path'],
+                        file_type=file_info['extension'],
+                        file_size=file_info['size'],
+                        is_video=file_info['is_video'],
+                        is_document=file_info['is_document'],
+                        order_index=file_order,
+                        thumbnail_base64=thumbnail_base64
+                    )
                     files_added += 1
 
                 file_order += 1
 
-    conn.commit()
-
-    # Update course progress for all users
-    cursor.execute('SELECT DISTINCT id FROM courses')
-    for row in cursor.fetchall():
-        update_course_progress(row['id'])
-
-    conn.close()
+    # Update course progress for default user
+    db.update_course_progress(course_id, 'default_user')
 
     return courses_added, lessons_added, files_added
 
 def scan_and_import(base_path=None, rescan=False):
-    """Main function to scan folder and import to database"""
+    """Main function to scan folder and import to Firebase"""
     if base_path is None:
         base_path = Config.MEDIA_PATH
 
@@ -223,8 +226,8 @@ def scan_and_import(base_path=None, rescan=False):
     start_time = time.time()
 
     try:
-        # Initialize database
-        init_enhanced_db()
+        # Initialize Firebase
+        db.init_firebase()
 
         # Scan folders
         courses_data, files_found = scan_folder_structure(base_path)
@@ -232,21 +235,20 @@ def scan_and_import(base_path=None, rescan=False):
         print(f"\nFound {len(courses_data)} courses with {files_found} files")
         print("-" * 60)
 
-        # Import to database
+        # Import to Firebase
         courses_added, lessons_added, files_added = import_to_database(courses_data, rescan)
 
         scan_duration = time.time() - start_time
 
         # Record scan history
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO scan_history
-            (scan_path, files_found, courses_added, lessons_added, scan_duration, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (base_path, files_found, courses_added, lessons_added, scan_duration, 'success'))
-        conn.commit()
-        conn.close()
+        db.add_scan_history(
+            scan_path=base_path,
+            files_found=files_found,
+            courses_added=courses_added,
+            lessons_added=lessons_added,
+            scan_duration=scan_duration,
+            status='success'
+        )
 
         print("\nScan Summary:")
         print(f"  Courses added: {courses_added}")
@@ -259,19 +261,20 @@ def scan_and_import(base_path=None, rescan=False):
 
     except Exception as e:
         print(f"\nError during scan: {str(e)}")
+        import traceback
+        traceback.print_exc()
         scan_duration = time.time() - start_time
 
         # Record failed scan
         try:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO scan_history
-                (scan_path, files_found, scan_duration, status)
-                VALUES (?, ?, ?, ?)
-            ''', (base_path, 0, scan_duration, f'failed: {str(e)}'))
-            conn.commit()
-            conn.close()
+            db.add_scan_history(
+                scan_path=base_path,
+                files_found=0,
+                courses_added=0,
+                lessons_added=0,
+                scan_duration=scan_duration,
+                status=f'failed: {str(e)}'
+            )
         except:
             pass
 

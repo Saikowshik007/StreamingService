@@ -51,12 +51,19 @@ def init_enhanced_db():
             order_index INTEGER,
             is_video BOOLEAN DEFAULT 0,
             is_document BOOLEAN DEFAULT 0,
+            thumbnail_path TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_scanned TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (lesson_id) REFERENCES lessons (id) ON DELETE CASCADE,
             FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
         )
     ''')
+
+    # Add thumbnail_path column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute("SELECT thumbnail_path FROM files LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE files ADD COLUMN thumbnail_path TEXT")
 
     # User progress table - tracks progress for each file
     cursor.execute('''
