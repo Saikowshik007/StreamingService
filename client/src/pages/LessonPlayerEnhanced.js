@@ -152,8 +152,6 @@ function LessonPlayerEnhanced() {
               onPause={updateProgress}
               preload="metadata"
             />
-                Your browser does not support the video tag.
-              </video>
             ) : (
               <div className="no-video">
                 <p>Select a video to start watching</p>
