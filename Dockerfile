@@ -11,9 +11,10 @@ COPY app.py .
 COPY config.py .
 COPY database_enhanced.py .
 COPY folder_scanner.py .
+COPY folder_watcher.py .
 
-# Create directory for database
-RUN mkdir -p /app/data
+# Create directories for database and media
+RUN mkdir -p /app/data /media
 
 # Expose port
 EXPOSE 5000
