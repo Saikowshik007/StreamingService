@@ -22,7 +22,7 @@ function LessonPlayerEnhanced() {
     const completed = video.currentTime >= video.duration - 2;
 
     try {
-      await authenticatedFetch(`${API_URL}/learn/api/progress`, {
+      await authenticatedFetch(`${API_URL}/api/progress`, {
         method: 'POST',
         body: JSON.stringify({
           file_id: currentFile.id,
@@ -48,7 +48,7 @@ function LessonPlayerEnhanced() {
   useEffect(() => {
     const fetchLesson = async () => {
       try {
-        const response = await authenticatedFetch(`${API_URL}/learn/api/lessons/${lessonId}`);
+        const response = await authenticatedFetch(`${API_URL}/api/lessons/${lessonId}`);
         const data = await response.json();
         setLesson(data);
         setLoading(false);

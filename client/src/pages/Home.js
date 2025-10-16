@@ -14,7 +14,7 @@ function Home() {
 
   const fetchCourses = async () => {
     try {
-      const response = await authenticatedFetch(`${API_URL}/learn/api/courses`);
+      const response = await authenticatedFetch(`${API_URL}/api/courses`);
       const data = await response.json();
       setCourses(data);
       setLoading(false);
