@@ -73,15 +73,29 @@ def get_all_courses(user_id='default_user'):
     db = get_db()
     courses = []
 
-    for doc in db.collection('courses').order_by('created_at', direction='DESCENDING').stream():
+    try:
+        # Try to order by created_at (requires index in Firestore)
+        query = db.collection('courses').order_by('created_at', direction='DESCENDING')
+    except Exception as e:
+        logger.warning(f"Failed to order by created_at, using default order: {str(e)}")
+        # Fall back to no ordering if index doesn't exist
+        query = db.collection('courses')
+
+    for doc in query.stream():
         course = doc.to_dict()
         course['id'] = doc.id
 
         # Get progress
-        progress = get_course_progress(course['id'], user_id)
-        course['progress_percentage'] = progress.get('progress_percentage', 0)
-        course['completed_files'] = progress.get('completed_files', 0)
-        course['progress_total_files'] = progress.get('total_files', 0)
+        try:
+            progress = get_course_progress(course['id'], user_id)
+            course['progress_percentage'] = progress.get('progress_percentage', 0)
+            course['completed_files'] = progress.get('completed_files', 0)
+            course['progress_total_files'] = progress.get('total_files', 0)
+        except Exception as e:
+            logger.error(f"Error getting progress for course {course['id']}: {str(e)}")
+            course['progress_percentage'] = 0
+            course['completed_files'] = 0
+            course['progress_total_files'] = 0
 
         courses.append(course)
 
@@ -132,7 +146,13 @@ def get_lessons_by_course(course_id, user_id='default_user'):
     db = get_db()
     lessons = []
 
-    for doc in db.collection('lessons').where('course_id', '==', course_id).order_by('order_index').stream():
+    try:
+        query = db.collection('lessons').where('course_id', '==', course_id).order_by('order_index')
+    except Exception as e:
+        logger.warning(f"Failed to order lessons, using default order: {str(e)}")
+        query = db.collection('lessons').where('course_id', '==', course_id)
+
+    for doc in query.stream():
         lesson = doc.to_dict()
         lesson['id'] = doc.id
 
@@ -209,7 +229,13 @@ def get_files_by_lesson(lesson_id, user_id='default_user'):
     db = get_db()
     files = []
 
-    for doc in db.collection('files').where('lesson_id', '==', lesson_id).order_by('order_index').stream():
+    try:
+        query = db.collection('files').where('lesson_id', '==', lesson_id).order_by('order_index')
+    except Exception as e:
+        logger.warning(f"Failed to order files, using default order: {str(e)}")
+        query = db.collection('files').where('lesson_id', '==', lesson_id)
+
+    for doc in query.stream():
         file_data = doc.to_dict()
         file_data['id'] = doc.id
 
@@ -368,7 +394,13 @@ def get_scan_history(limit=10):
     db = get_db()
     history = []
 
-    for doc in db.collection('scan_history').order_by('scan_timestamp', direction='DESCENDING').limit(limit).stream():
+    try:
+        query = db.collection('scan_history').order_by('scan_timestamp', direction='DESCENDING').limit(limit)
+    except Exception as e:
+        logger.warning(f"Failed to order scan history, using default order: {str(e)}")
+        query = db.collection('scan_history').limit(limit)
+
+    for doc in query.stream():
         data = doc.to_dict()
         data['id'] = doc.id
         history.append(data)

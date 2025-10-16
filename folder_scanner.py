@@ -115,6 +115,7 @@ def import_to_database(courses_data, rescan=False):
     courses_added = 0
     lessons_added = 0
     files_added = 0
+    processed_course_ids = []
 
     for course_name, course_info in courses_data.items():
         # Check if course exists
@@ -144,6 +145,9 @@ def import_to_database(courses_data, rescan=False):
                 )
                 courses_added += 1
                 print(f"Added course: {course_name} (ID: {course_id})")
+
+        # Track this course ID for progress update later
+        processed_course_ids.append(course_id)
 
         # Process lessons
         lesson_order = 1
@@ -209,8 +213,12 @@ def import_to_database(courses_data, rescan=False):
 
                 file_order += 1
 
-    # Update course progress for default user
-    db.update_course_progress(course_id, 'default_user')
+    # Update course progress for all processed courses
+    for cid in processed_course_ids:
+        try:
+            db.update_course_progress(cid, 'default_user')
+        except Exception as e:
+            print(f"  Warning: Failed to update progress for course {cid}: {str(e)}")
 
     return courses_added, lessons_added, files_added
 
