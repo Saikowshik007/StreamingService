@@ -9,14 +9,8 @@ RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
-COPY app.py .
-COPY config.py .
-COPY firebase_config.py .
-COPY firebase_service.py .
-COPY folder_scanner.py .
-COPY folder_watcher.py .
-COPY thumbnail_generator.py .
+# Copy all Python application files
+COPY *.py .
 
 # Create media directory
 RUN mkdir -p /media
