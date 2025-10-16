@@ -192,12 +192,12 @@ def get_signed_stream_url(file_id):
     # Generate signed URL parameters
     signature, expiration = generate_signed_url(file_id)
 
-    # Return the signed URL components
+    # Return the signed URL components (without /learn prefix, frontend will add API_URL)
     return jsonify({
         'file_id': file_id,
         'signature': signature,
         'expires': expiration,
-        'url': f"/learn/api/stream/{file_id}?signature={signature}&expires={expiration}"
+        'url': f"/api/stream/{file_id}?signature={signature}&expires={expiration}"
     })
 
 @api_bp.route('/api/stream/<file_id>', methods=['GET'])
