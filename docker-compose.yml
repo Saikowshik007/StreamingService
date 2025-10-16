@@ -6,7 +6,7 @@ services:
     container_name: learning-platform-backend
     restart: unless-stopped
     ports:
-      - "5000:5000"  # Keep for local testing
+      - "5000:5000"
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=production
@@ -14,12 +14,10 @@ services:
       - PORT=5000
       - DB_PATH=/app/data/database.db
     volumes:
-      # Mount your course media folder (READ-ONLY for safety)
       - C:/Users/anant/Desktop/CourseMedia:/media:ro
-      # Mount database directory (READ-WRITE)
       - ./data:/app/data
     networks:
-      - jobtrak-network  # Connect to the external network
+      - jobtrak-network
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
       interval: 30s
@@ -27,47 +25,48 @@ services:
       start_period: 10s
       retries: 3
     labels:
-      # Enable Traefik
-      - "traefik.enable=true"
+      # Basic Traefik config
+      traefik.enable: "true"
+      traefik.docker.network: "jobtrak-network"
 
-      # HTTPS Router with HIGHEST PRIORITY (higher than API's priority)
-      - "traefik.http.routers.learning.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
-      - "traefik.http.routers.learning.entrypoints=websecure"
-      - "traefik.http.routers.learning.tls=true"
-      - "traefik.http.routers.learning.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.learning.priority=200"
+      # CRITICAL: Force Traefik to use this specific network
+      traefik.http.services.learning-backend.loadbalancer.passhostheader: "true"
 
-      # Service configuration - unique service name
-      - "traefik.http.services.learning-backend.loadbalancer.server.port=5000"
-      - "traefik.http.routers.learning.service=learning-backend"
+      # HTTPS Router (main)
+      traefik.http.routers.learning.rule: "Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+      traefik.http.routers.learning.entrypoints: "websecure"
+      traefik.http.routers.learning.tls: "true"
+      traefik.http.routers.learning.tls.certresolver: "letsencrypt"
+      traefik.http.routers.learning.priority: "200"
+      traefik.http.routers.learning.service: "learning-backend"
+      traefik.http.routers.learning.middlewares: "learning-strip,learning-cors"
 
-      # Health check for load balancer
-      - "traefik.http.services.learning-backend.loadbalancer.healthcheck.path=/api/health"
-      - "traefik.http.services.learning-backend.loadbalancer.healthcheck.interval=10s"
-      - "traefik.http.services.learning-backend.loadbalancer.healthcheck.timeout=5s"
+      # HTTP Router (redirect to HTTPS)
+      traefik.http.routers.learning-http.rule: "Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+      traefik.http.routers.learning-http.entrypoints: "web"
+      traefik.http.routers.learning-http.priority: "200"
+      traefik.http.routers.learning-http.middlewares: "learning-redirect"
 
-      # Strip /learn prefix middleware
-      - "traefik.http.middlewares.learning-strip.stripprefix.prefixes=/learn"
+      # Service definition
+      traefik.http.services.learning-backend.loadbalancer.server.port: "5000"
+      traefik.http.services.learning-backend.loadbalancer.healthcheck.path: "/api/health"
+      traefik.http.services.learning-backend.loadbalancer.healthcheck.interval: "10s"
 
-      # CORS headers middleware
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD"
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolalloworiginlist=https://streaming-service.vercel.app,https://jobtrackai.duckdns.org,http://localhost:3000"
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolallowcredentials=true"
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolallowheaders=Content-Type,Authorization,X-Requested-With,Range,Accept,Access-Control-Allow-Origin"
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolexposeheaders=Content-Length,Content-Range,Accept-Ranges"
-      - "traefik.http.middlewares.learning-cors.headers.accesscontrolmaxage=3600"
+      # StripPrefix middleware
+      traefik.http.middlewares.learning-strip.stripprefix.prefixes: "/learn"
 
-      # Apply middlewares: strip prefix FIRST, then CORS
-      - "traefik.http.routers.learning.middlewares=learning-strip,learning-cors"
+      # CORS middleware
+      traefik.http.middlewares.learning-cors.headers.accesscontrolallowmethods: "GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD"
+      traefik.http.middlewares.learning-cors.headers.accesscontrolalloworiginlist: "https://streaming-service.vercel.app,https://jobtrackai.duckdns.org,http://localhost:3000"
+      traefik.http.middlewares.learning-cors.headers.accesscontrolallowcredentials: "true"
+      traefik.http.middlewares.learning-cors.headers.accesscontrolallowheaders: "Content-Type,Authorization,X-Requested-With,Range,Accept"
+      traefik.http.middlewares.learning-cors.headers.accesscontrolexposeheaders: "Content-Length,Content-Range,Accept-Ranges"
+      traefik.http.middlewares.learning-cors.headers.accesscontrolmaxage: "3600"
 
-      # HTTP to HTTPS redirect
-      - "traefik.http.routers.learning-http.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
-      - "traefik.http.routers.learning-http.entrypoints=web"
-      - "traefik.http.routers.learning-http.priority=200"
-      - "traefik.http.middlewares.learning-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.learning-redirect.redirectscheme.permanent=true"
-      - "traefik.http.routers.learning-http.middlewares=learning-redirect"
+      # Redirect middleware
+      traefik.http.middlewares.learning-redirect.redirectscheme.scheme: "https"
+      traefik.http.middlewares.learning-redirect.redirectscheme.permanent: "true"
 
 networks:
   jobtrak-network:
-    external: true  # Use the existing network from JobTrak
+    external: true
