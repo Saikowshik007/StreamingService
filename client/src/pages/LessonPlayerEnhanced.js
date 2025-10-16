@@ -141,14 +141,17 @@ function LessonPlayerEnhanced() {
         <div className="main-content">
           <div className="video-container">
             {currentFile && currentFile.is_video ? (
-              <video
-                ref={videoRef}
-                controls
-                className="video-player"
-                src={`${API_URL}/api/stream/${currentFile.id}`}
-                onEnded={handleVideoEnd}
-                onPause={updateProgress}
-              >
+            <video
+              key={currentFile?.id}
+              ref={videoRef}
+              controls
+              className="video-player"
+              crossOrigin="use-credentials"
+              src={`${API_URL}/api/stream/${currentFile.id}`}
+              onEnded={handleVideoEnd}
+              onPause={updateProgress}
+              preload="metadata"
+            />
                 Your browser does not support the video tag.
               </video>
             ) : (
