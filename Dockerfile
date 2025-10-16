@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install ffmpeg for thumbnail generation
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -9,12 +12,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY app.py .
 COPY config.py .
-COPY database_enhanced.py .
+COPY firebase_config.py .
+COPY firebase_service.py .
 COPY folder_scanner.py .
 COPY folder_watcher.py .
+COPY thumbnail_generator.py .
 
-# Create directories for database and media
-RUN mkdir -p /app/data /media
+# Create media directory
+RUN mkdir -p /media
 
 # Expose port
 EXPOSE 5000

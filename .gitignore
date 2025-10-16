@@ -12,3 +12,14 @@ venv/
 client/build/
 client/node_modules/
 .idea/
+
+# Firebase credentials (IMPORTANT: Never commit these!)
+firebase-credentials.json
+*firebase-credentials*.json
+
+# Old SQLite database files (no longer used)
+database.db
+streaming.db
+
+# Old thumbnail directory (no longer used - thumbnails now in Firebase)
+Media/thumbnails/
