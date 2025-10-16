@@ -22,7 +22,7 @@ services:
       - C:/Users/anant/Desktop/CourseMedia:/media:ro
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/learn/api/health"]
       interval: 30s
       timeout: 10s
       start_period: 10s
@@ -42,7 +42,7 @@ services:
       traefik.http.routers.learning.tls.certresolver: "letsencrypt"
       traefik.http.routers.learning.priority: "200"
       traefik.http.routers.learning.service: "learning-backend"
-      traefik.http.routers.learning.middlewares: "learning-strip,learning-cors"
+      traefik.http.routers.learning.middlewares: "learning-cors"
 
       # HTTP Router (redirect to HTTPS)
       traefik.http.routers.learning-http.rule: "Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
@@ -52,11 +52,8 @@ services:
 
       # Service definition
       traefik.http.services.learning-backend.loadbalancer.server.port: "5000"
-      traefik.http.services.learning-backend.loadbalancer.healthcheck.path: "/api/health"
+      traefik.http.services.learning-backend.loadbalancer.healthcheck.path: "/learn/api/health"
       traefik.http.services.learning-backend.loadbalancer.healthcheck.interval: "10s"
-
-      # StripPrefix middleware
-      traefik.http.middlewares.learning-strip.stripprefix.prefixes: "/learn"
 
       # CORS middleware
       traefik.http.middlewares.learning-cors.headers.accesscontrolallowmethods: "GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD"

@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, jsonify, Response
+from flask import Flask, request, send_file, jsonify, Response, Blueprint
 from flask_cors import CORS
 import os
 import mimetypes
@@ -21,6 +21,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Create a blueprint with /learn prefix to match Traefik routing
+# This handles both cases: with and without Traefik stripprefix
+api_bp = Blueprint('api', __name__, url_prefix='/learn')
 
 def get_allowed_origins():
     """Get the list of allowed CORS origins."""
@@ -141,7 +145,7 @@ def after_request(response):
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Range,Accept')
     return response
 
-@app.route('/api/courses', methods=['GET'])
+@api_bp.route('/api/courses', methods=['GET'])
 def get_courses():
     """Get all courses with progress"""
     user_id = request.args.get('user_id', 'default_user')
@@ -164,7 +168,7 @@ def get_courses():
 
     return jsonify(courses)
 
-@app.route('/api/courses/<int:course_id>', methods=['GET'])
+@api_bp.route('/api/courses/<int:course_id>', methods=['GET'])
 def get_course(course_id):
     """Get a specific course with lessons and files"""
     user_id = request.args.get('user_id', 'default_user')
@@ -227,7 +231,7 @@ def get_course(course_id):
 
     return jsonify(course_dict)
 
-@app.route('/api/lessons/<int:lesson_id>', methods=['GET'])
+@api_bp.route('/api/lessons/<int:lesson_id>', methods=['GET'])
 def get_lesson(lesson_id):
     """Get a specific lesson with files"""
     user_id = request.args.get('user_id', 'default_user')
@@ -261,7 +265,7 @@ def get_lesson(lesson_id):
 
     return jsonify(lesson_dict)
 
-@app.route('/api/file/<int:file_id>', methods=['GET'])
+@api_bp.route('/api/file/<int:file_id>', methods=['GET'])
 def get_file_info(file_id):
     """Get file information"""
     user_id = request.args.get('user_id', 'default_user')
@@ -287,7 +291,7 @@ def get_file_info(file_id):
 
     return jsonify(dict(file))
 
-@app.route('/api/stream/<int:file_id>', methods=['GET'])
+@api_bp.route('/api/stream/<int:file_id>', methods=['GET'])
 def stream_file(file_id):
     """Stream video file with range request support"""
     conn = get_db()
@@ -332,7 +336,7 @@ def stream_file(file_id):
 
     return response
 
-@app.route('/api/document/<int:file_id>', methods=['GET'])
+@api_bp.route('/api/document/<int:file_id>', methods=['GET'])
 def get_document(file_id):
     """Serve document files"""
     conn = get_db()
@@ -352,7 +356,7 @@ def get_document(file_id):
     mimetype = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
     return send_file(file_path, mimetype=mimetype, as_attachment=False)
 
-@app.route('/api/progress', methods=['POST'])
+@api_bp.route('/api/progress', methods=['POST'])
 def update_progress():
     """Update user progress for a file"""
     data = request.json
@@ -394,7 +398,7 @@ def update_progress():
 
     return jsonify({'success': True})
 
-@app.route('/api/progress/course/<int:course_id>', methods=['GET'])
+@api_bp.route('/api/progress/course/<int:course_id>', methods=['GET'])
 def get_course_progress(course_id):
     """Get course progress for a user"""
     user_id = request.args.get('user_id', 'default_user')
@@ -415,7 +419,7 @@ def get_course_progress(course_id):
     else:
         return jsonify({'progress_percentage': 0, 'completed_files': 0})
 
-@app.route('/api/scan', methods=['POST'])
+@api_bp.route('/api/scan', methods=['POST'])
 def scan_folders():
     """Trigger a folder scan"""
     data = request.json or {}
@@ -431,7 +435,7 @@ def scan_folders():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@app.route('/api/scan/history', methods=['GET'])
+@api_bp.route('/api/scan/history', methods=['GET'])
 def get_scan_history():
     """Get scan history"""
     conn = get_db()
@@ -441,7 +445,7 @@ def get_scan_history():
     conn.close()
     return jsonify(history)
 
-@app.route('/api/stats', methods=['GET'])
+@api_bp.route('/api/stats', methods=['GET'])
 def get_stats():
     """Get overall statistics"""
     conn = get_db()
@@ -472,7 +476,7 @@ def get_stats():
         'documents': documents_count
     })
 
-@app.route('/api/health', methods=['GET'])
+@api_bp.route('/api/health', methods=['GET'])
 def health_check():
     """Enhanced health check endpoint"""
     return jsonify({
@@ -483,7 +487,7 @@ def health_check():
         'version': '1.0.0'
     })
 
-@app.route('/api/cors-test', methods=['GET'])
+@api_bp.route('/api/cors-test', methods=['GET'])
 def cors_test():
     """Test endpoint specifically for CORS debugging"""
     return jsonify({
@@ -493,7 +497,7 @@ def cors_test():
         'status': 'ok'
     })
 
-@app.route('/api/watcher/status', methods=['GET'])
+@api_bp.route('/api/watcher/status', methods=['GET'])
 def watcher_status():
     """Check folder watcher status"""
     watcher = get_watcher()
@@ -502,6 +506,9 @@ def watcher_status():
         'watch_path': watcher.watch_path,
         'auto_scan_enabled': True
     })
+
+# Register the blueprint
+app.register_blueprint(api_bp)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=Config.PORT, debug=Config.DEBUG)
