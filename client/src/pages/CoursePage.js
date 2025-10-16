@@ -12,7 +12,7 @@ function CoursePage() {
   useEffect(() => {
     const fetchCourse = async () => {
       try {
-        const response = await authenticatedFetch(`${API_URL}/learn/api/courses/${courseId}`);
+        const response = await authenticatedFetch(`${API_URL}/api/courses/${courseId}`);
         const data = await response.json();
         setCourse(data);
         setLoading(false);
