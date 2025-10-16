@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
-import API_URL from '../config';
+import API_URL, { authenticatedFetch } from '../config';
 import './Home.css';
 
 function Home() {
@@ -15,8 +14,9 @@ function Home() {
 
   const fetchCourses = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/courses`);
-      setCourses(response.data);
+      const response = await authenticatedFetch(`${API_URL}/learn/api/courses`);
+      const data = await response.json();
+      setCourses(data);
       setLoading(false);
     } catch (err) {
       setError('Failed to load courses. Make sure the backend server is running.');
