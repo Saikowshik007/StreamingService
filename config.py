@@ -5,5 +5,5 @@ load_dotenv()
 
 class Config:
     PORT = int(os.getenv('PORT', 5000))
-    MEDIA_PATH = os.getenv('MEDIA_PATH', 'D:')
+    MEDIA_PATH = os.getenv('MEDIA_PATH', 'D:/CourseMedia')
     DEBUG = os.getenv('FLASK_ENV') == 'development'
