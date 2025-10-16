@@ -3,6 +3,7 @@ from flask_cors import CORS
 import os
 import mimetypes
 import logging
+import atexit
 from pathlib import Path
 from config import Config
 from database_enhanced import (
@@ -10,6 +11,7 @@ from database_enhanced import (
     update_course_progress
 )
 from folder_scanner import scan_and_import
+from folder_watcher import start_watcher, stop_watcher, get_watcher
 
 # Configure logging
 logging.basicConfig(
@@ -106,6 +108,13 @@ CORS(app,
 
 # Initialize database
 init_enhanced_db()
+
+# Start automatic folder watcher
+logger.info("Starting automatic folder watcher...")
+start_watcher()
+
+# Register cleanup on exit
+atexit.register(stop_watcher)
 
 # Add explicit OPTIONS handler for all API routes
 @app.before_request
@@ -482,6 +491,16 @@ def cors_test():
         'origin_allowed': True,
         'cors_origins': get_allowed_origins(),
         'status': 'ok'
+    })
+
+@app.route('/api/watcher/status', methods=['GET'])
+def watcher_status():
+    """Check folder watcher status"""
+    watcher = get_watcher()
+    return jsonify({
+        'active': watcher.is_active(),
+        'watch_path': watcher.watch_path,
+        'auto_scan_enabled': True
     })
 
 if __name__ == '__main__':
