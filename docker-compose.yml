@@ -12,7 +12,7 @@ services:
       - PORT=5000
       - DB_PATH=/app/data/database.db
     volumes:
-      - C:/Users/anant/Desktop/CourseMedia:/media:ro
+      - D:/:/media:ro
       - ./data:/app/data
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
