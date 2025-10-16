@@ -31,7 +31,7 @@ services:
       - "traefik.enable=true"
 
       # HTTPS Router (websecure)
-      - "traefik.http.routers.learning-platform.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+      - "traefik.http.routers.learning-platform.rule=Host(`jobtrackai.duckdns.org`)"
       - "traefik.http.routers.learning-platform.entrypoints=websecure"
       - "traefik.http.routers.learning-platform.tls=true"
       - "traefik.http.routers.learning-platform.tls.certresolver=letsencrypt"
@@ -45,9 +45,6 @@ services:
       - "traefik.http.services.learning-platform-service.loadbalancer.healthcheck.path=/api/health"
       - "traefik.http.services.learning-platform-service.loadbalancer.healthcheck.interval=10s"
 
-      # Strip prefix middleware
-      - "traefik.http.middlewares.learning-platform-stripprefix.stripprefix.prefixes=/learn"
-
       # CORS headers middleware
       - "traefik.http.middlewares.learning-platform-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD"
       - "traefik.http.middlewares.learning-platform-cors.headers.accesscontrolalloworiginlist=https://streaming-service.vercel.app,https://jobtrackai.duckdns.org,http://localhost:3000"
@@ -55,11 +52,11 @@ services:
       - "traefik.http.middlewares.learning-platform-cors.headers.accesscontrolallowheaders=Content-Type,Authorization,X-Requested-With,Range,Accept"
       - "traefik.http.middlewares.learning-platform-cors.headers.accesscontrolmaxage=3600"
 
-      # Apply middlewares in order: CORS first, then strip prefix
-      - "traefik.http.routers.learning-platform.middlewares=learning-platform-cors,learning-platform-stripprefix"
+      # Apply CORS middleware
+      - "traefik.http.routers.learning-platform.middlewares=learning-platform-cors"
 
       # HTTP to HTTPS redirect
-      - "traefik.http.routers.learning-platform-http.rule=Host(`jobtrackai.duckdns.org`) && PathPrefix(`/learn`)"
+      - "traefik.http.routers.learning-platform-http.rule=Host(`jobtrackai.duckdns.org`)"
       - "traefik.http.routers.learning-platform-http.entrypoints=web"
       - "traefik.http.routers.learning-platform-http.priority=100"
       - "traefik.http.middlewares.learning-platform-https-redirect.redirectscheme.scheme=https"
