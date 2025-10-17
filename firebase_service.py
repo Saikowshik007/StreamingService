@@ -309,8 +309,13 @@ def get_files_by_lesson(lesson_id, user_id='default_user', fetch_progress=True):
 
     # Optionally fetch progress from Firebase (only when viewing the lesson)
     if fetch_progress:
+        # OPTIMIZATION: Batch fetch all progress in ONE query instead of N queries!
+        progress_map = get_user_progress_batch(user_id, lesson_id)
+
         for file_data in files:
-            progress = get_user_progress(user_id, file_data['id'])
+            file_id = file_data['id']
+            progress = progress_map.get(file_id)
+
             if progress:
                 file_data['progress_seconds'] = progress.get('progress_seconds', 0)
                 file_data['progress_percentage'] = progress.get('progress_percentage', 0)
@@ -384,6 +389,26 @@ def get_user_progress(user_id, file_id):
         data['id'] = doc.id
         return data
     return None
+
+def get_user_progress_batch(user_id, lesson_id):
+    """
+    Get all progress for a user in a lesson (BATCH fetch - faster!)
+    Returns a dict mapping file_id -> progress_data
+    """
+    db = get_db()
+    progress_map = {}
+
+    # Fetch all progress for this user and lesson in ONE query
+    docs = db.collection('user_progress').where(filter=FieldFilter('user_id', '==', user_id)).where(filter=FieldFilter('lesson_id', '==', lesson_id)).stream()
+
+    for doc in docs:
+        data = doc.to_dict()
+        data['id'] = doc.id
+        file_id = data.get('file_id')
+        if file_id:
+            progress_map[file_id] = data
+
+    return progress_map
 
 # Course Progress Operations
 def get_course_progress(course_id, user_id='default_user'):

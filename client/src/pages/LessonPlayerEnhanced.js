@@ -10,10 +10,13 @@ function LessonPlayerEnhanced() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const videoRef = useRef(null);
   const progressInterval = useRef(null);
   const shouldSeek = useRef(true);
   const currentFileIdRef = useRef(null);
+  const hasSetInitialTime = useRef(false);
 
   const updateProgress = useCallback(async () => {
     if (!currentFile || !currentFile.is_video || !videoRef.current) return;
@@ -109,19 +112,29 @@ function LessonPlayerEnhanced() {
     fetchSignedUrl();
   }, [currentFile]);
 
-  useEffect(() => {
-    if (currentFile && currentFile.is_video && videoRef.current) {
-      const video = videoRef.current;
+  // Handle video loaded - seek to saved position
+  const handleVideoLoaded = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !currentFile) return;
 
-      // Seek to saved position only if this is a real file change
-      if (shouldSeek.current && currentFile.progress_seconds && currentFile.progress_seconds > 0) {
-        video.currentTime = currentFile.progress_seconds;
-      }
-      shouldSeek.current = true; // Reset for next time
+    // Seek to saved position only once when video loads
+    if (shouldSeek.current && currentFile.progress_seconds && currentFile.progress_seconds > 5) {
+      console.log(`Seeking to saved position: ${currentFile.progress_seconds}s`);
+      video.currentTime = currentFile.progress_seconds;
+      hasSetInitialTime.current = true;
+    }
+    shouldSeek.current = true; // Reset for next video
+  }, [currentFile]);
+
+  useEffect(() => {
+    if (currentFile && currentFile.is_video) {
+      // Reset flag when switching videos
+      hasSetInitialTime.current = false;
 
       // Update progress every 5 seconds
       progressInterval.current = setInterval(() => {
-        if (!video.paused) {
+        const video = videoRef.current;
+        if (video && !video.paused) {
           updateProgress();
         }
       }, 5000);
@@ -133,6 +146,32 @@ function LessonPlayerEnhanced() {
       };
     }
   }, [currentFile, updateProgress]);
+
+  // Handle speed change
+  const handleSpeedChange = (rate) => {
+    setPlaybackRate(rate);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = rate;
+    }
+    setShowSpeedMenu(false);
+  };
+
+  // Toggle CC (subtitles)
+  const handleToggleCC = () => {
+    const video = videoRef.current;
+    if (!video || !video.textTracks || video.textTracks.length === 0) {
+      alert('No subtitles available for this video');
+      return;
+    }
+
+    // Toggle first text track
+    const track = video.textTracks[0];
+    if (track.mode === 'showing') {
+      track.mode = 'hidden';
+    } else {
+      track.mode = 'showing';
+    }
+  };
 
   const handleFileSelect = (file) => {
     // Save progress of current video before switching
@@ -175,16 +214,56 @@ function LessonPlayerEnhanced() {
         <div className="main-content">
           <div className="video-container">
             {currentFile && currentFile.is_video && videoUrl ? (
-            <video
-              key={currentFile?.id}
-              ref={videoRef}
-              controls
-              className="video-player"
-              src={videoUrl}
-              onEnded={handleVideoEnd}
-              onPause={updateProgress}
-              preload="metadata"
-            />
+            <div className="video-wrapper">
+              <video
+                key={currentFile?.id}
+                ref={videoRef}
+                controls
+                className="video-player"
+                src={videoUrl}
+                onEnded={handleVideoEnd}
+                onPause={updateProgress}
+                onLoadedMetadata={handleVideoLoaded}
+                preload="metadata"
+              />
+
+              {/* Custom Controls Overlay */}
+              <div className="custom-controls">
+                {/* Speed Control */}
+                <div className="control-group">
+                  <button
+                    className="control-btn"
+                    onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                    title="Playback Speed"
+                  >
+                    <span className="speed-label">{playbackRate}x</span>
+                  </button>
+
+                  {showSpeedMenu && (
+                    <div className="speed-menu">
+                      {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(rate => (
+                        <button
+                          key={rate}
+                          className={`speed-option ${playbackRate === rate ? 'active' : ''}`}
+                          onClick={() => handleSpeedChange(rate)}
+                        >
+                          {rate}x
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* CC Toggle */}
+                <button
+                  className="control-btn cc-btn"
+                  onClick={handleToggleCC}
+                  title="Closed Captions"
+                >
+                  CC
+                </button>
+              </div>
+            </div>
             ) : currentFile && currentFile.is_video ? (
               <div className="no-video">
                 <p>Loading video...</p>
