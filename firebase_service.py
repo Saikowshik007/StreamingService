@@ -10,10 +10,12 @@ Collections structure:
 """
 
 from firebase_config import get_db
+from cache_service import get_cache
 from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
+cache = get_cache()
 
 def init_firebase():
     """Initialize Firebase (no need to create tables like SQL)"""
@@ -40,7 +42,12 @@ def create_course(title, description=None, instructor=None, folder_path=None, to
         'updated_at': datetime.utcnow()
     }
     doc_ref = db.collection('courses').add(course_data)
-    return doc_ref[1].id
+    course_id = doc_ref[1].id
+
+    # Invalidate cache
+    cache.delete_pattern('courses:all')
+
+    return course_id
 
 def get_course_by_folder_path(folder_path):
     """Get course by folder path"""
@@ -53,12 +60,24 @@ def get_course_by_folder_path(folder_path):
     return None
 
 def get_course_by_id(course_id):
-    """Get course by ID"""
+    """Get course by ID (cached)"""
+    cache_key = f'course:{course_id}'
+
+    # Try cache first
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return cached_data
+
+    # Fetch from Firebase
     db = get_db()
     doc = db.collection('courses').document(course_id).get()
     if doc.exists:
         data = doc.to_dict()
         data['id'] = doc.id
+
+        # Cache for 1 hour (3600 seconds)
+        cache.set(cache_key, data, ttl=3600)
+
         return data
     return None
 
@@ -68,8 +87,19 @@ def update_course(course_id, **kwargs):
     kwargs['updated_at'] = datetime.utcnow()
     db.collection('courses').document(course_id).update(kwargs)
 
+    # Invalidate cache
+    cache.invalidate_course(course_id)
+
 def get_all_courses(user_id='default_user'):
-    """Get all courses with progress"""
+    """Get all courses WITHOUT progress (cached for speed)"""
+    cache_key = 'courses:all'
+
+    # Try cache first
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return cached_data
+
+    # Fetch from Firebase
     db = get_db()
     courses = []
 
@@ -84,20 +114,10 @@ def get_all_courses(user_id='default_user'):
     for doc in query.stream():
         course = doc.to_dict()
         course['id'] = doc.id
-
-        # Get progress
-        try:
-            progress = get_course_progress(course['id'], user_id)
-            course['progress_percentage'] = progress.get('progress_percentage', 0)
-            course['completed_files'] = progress.get('completed_files', 0)
-            course['progress_total_files'] = progress.get('total_files', 0)
-        except Exception as e:
-            logger.error(f"Error getting progress for course {course['id']}: {str(e)}")
-            course['progress_percentage'] = 0
-            course['completed_files'] = 0
-            course['progress_total_files'] = 0
-
         courses.append(course)
+
+    # Cache for 10 minutes (600 seconds)
+    cache.set(cache_key, courses, ttl=600)
 
     return courses
 
@@ -114,7 +134,12 @@ def create_lesson(course_id, title, folder_path=None, order_index=0, description
         'created_at': datetime.utcnow()
     }
     doc_ref = db.collection('lessons').add(lesson_data)
-    return doc_ref[1].id
+    lesson_id = doc_ref[1].id
+
+    # Invalidate cache
+    cache.invalidate_course(course_id)
+
+    return lesson_id
 
 def get_lesson_by_folder_path(course_id, folder_path):
     """Get lesson by course_id and folder path"""
@@ -127,7 +152,7 @@ def get_lesson_by_folder_path(course_id, folder_path):
     return None
 
 def get_lesson_by_id(lesson_id, user_id='default_user'):
-    """Get lesson by ID with files"""
+    """Get lesson by ID with files AND progress (user clicked on it)"""
     db = get_db()
     doc = db.collection('lessons').document(lesson_id).get()
     if not doc.exists:
@@ -136,34 +161,46 @@ def get_lesson_by_id(lesson_id, user_id='default_user'):
     lesson = doc.to_dict()
     lesson['id'] = doc.id
 
-    # Get files with progress
-    lesson['files'] = get_files_by_lesson(lesson_id, user_id)
+    # Get files WITH progress (fetch_progress=True) since user is viewing this lesson
+    lesson['files'] = get_files_by_lesson(lesson_id, user_id, fetch_progress=True)
 
     return lesson
 
-def get_lessons_by_course(course_id, user_id='default_user'):
-    """Get all lessons for a course"""
-    db = get_db()
-    lessons = []
+def get_lessons_by_course(course_id, user_id='default_user', include_files=False):
+    """Get all lessons for a course (cached, without progress)"""
+    cache_key = f'lessons:course:{course_id}'
 
-    try:
-        query = db.collection('lessons').where('course_id', '==', course_id).order_by('order_index')
-    except Exception as e:
-        logger.warning(f"Failed to order lessons, using default order: {str(e)}")
-        query = db.collection('lessons').where('course_id', '==', course_id)
+    # Try cache first
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        lessons = cached_data
+    else:
+        # Fetch from Firebase
+        db = get_db()
+        lessons = []
 
-    for doc in query.stream():
-        lesson = doc.to_dict()
-        lesson['id'] = doc.id
+        try:
+            query = db.collection('lessons').where('course_id', '==', course_id).order_by('order_index')
+        except Exception as e:
+            logger.warning(f"Failed to order lessons, using default order: {str(e)}")
+            query = db.collection('lessons').where('course_id', '==', course_id)
 
-        # Get file counts
-        files = get_files_by_lesson(lesson['id'], user_id)
-        lesson['file_count'] = len(files)
-        lesson['video_count'] = sum(1 for f in files if f.get('is_video'))
-        lesson['document_count'] = sum(1 for f in files if f.get('is_document'))
-        lesson['files'] = files
+        for doc in query.stream():
+            lesson = doc.to_dict()
+            lesson['id'] = doc.id
+            lessons.append(lesson)
 
-        lessons.append(lesson)
+        # Cache for 30 minutes (1800 seconds)
+        cache.set(cache_key, lessons, ttl=1800)
+
+    # Optionally include files (with file counts but NO progress)
+    if include_files:
+        for lesson in lessons:
+            files = get_files_by_lesson(lesson['id'], user_id, fetch_progress=False)
+            lesson['file_count'] = len(files)
+            lesson['video_count'] = sum(1 for f in files if f.get('is_video'))
+            lesson['document_count'] = sum(1 for f in files if f.get('is_document'))
+            lesson['files'] = files
 
     return lessons
 
@@ -187,7 +224,12 @@ def create_file(lesson_id, course_id, filename, file_path, file_type, file_size,
         'last_scanned': datetime.utcnow()
     }
     doc_ref = db.collection('files').add(file_data)
-    return doc_ref[1].id
+    file_id = doc_ref[1].id
+
+    # Invalidate cache
+    cache.invalidate_lesson(lesson_id, course_id)
+
+    return file_id
 
 def get_file_by_path(file_path):
     """Get file by file path"""
@@ -224,33 +266,64 @@ def update_file(file_id, **kwargs):
     kwargs['last_scanned'] = datetime.utcnow()
     db.collection('files').document(file_id).update(kwargs)
 
-def get_files_by_lesson(lesson_id, user_id='default_user'):
-    """Get all files for a lesson"""
-    db = get_db()
-    files = []
-
-    try:
-        query = db.collection('files').where('lesson_id', '==', lesson_id).order_by('order_index')
-    except Exception as e:
-        logger.warning(f"Failed to order files, using default order: {str(e)}")
-        query = db.collection('files').where('lesson_id', '==', lesson_id)
-
-    for doc in query.stream():
+    # Get file info to invalidate related caches
+    doc = db.collection('files').document(file_id).get()
+    if doc.exists:
         file_data = doc.to_dict()
-        file_data['id'] = doc.id
+        cache.invalidate_file(file_id, file_data.get('lesson_id'))
 
-        # Get progress
-        progress = get_user_progress(user_id, file_data['id'])
-        if progress:
-            file_data['progress_seconds'] = progress.get('progress_seconds', 0)
-            file_data['progress_percentage'] = progress.get('progress_percentage', 0)
-            file_data['completed'] = progress.get('completed', False)
-        else:
+def get_files_by_lesson(lesson_id, user_id='default_user', fetch_progress=True):
+    """
+    Get all files for a lesson (cached)
+
+    Args:
+        lesson_id: The lesson ID
+        user_id: The user ID
+        fetch_progress: If True, fetch progress from Firebase (slow). If False, skip progress (fast).
+    """
+    cache_key = f'files:lesson:{lesson_id}'
+
+    # Try cache for file metadata
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        files = cached_data
+    else:
+        # Fetch from Firebase
+        db = get_db()
+        files = []
+
+        try:
+            query = db.collection('files').where('lesson_id', '==', lesson_id).order_by('order_index')
+        except Exception as e:
+            logger.warning(f"Failed to order files, using default order: {str(e)}")
+            query = db.collection('files').where('lesson_id', '==', lesson_id)
+
+        for doc in query.stream():
+            file_data = doc.to_dict()
+            file_data['id'] = doc.id
+            files.append(file_data)
+
+        # Cache for 30 minutes (1800 seconds)
+        cache.set(cache_key, files, ttl=1800)
+
+    # Optionally fetch progress from Firebase (only when viewing the lesson)
+    if fetch_progress:
+        for file_data in files:
+            progress = get_user_progress(user_id, file_data['id'])
+            if progress:
+                file_data['progress_seconds'] = progress.get('progress_seconds', 0)
+                file_data['progress_percentage'] = progress.get('progress_percentage', 0)
+                file_data['completed'] = progress.get('completed', False)
+            else:
+                file_data['progress_seconds'] = 0
+                file_data['progress_percentage'] = 0
+                file_data['completed'] = False
+    else:
+        # Set default progress values without fetching
+        for file_data in files:
             file_data['progress_seconds'] = 0
             file_data['progress_percentage'] = 0
             file_data['completed'] = False
-
-        files.append(file_data)
 
     return files
 
@@ -409,7 +482,15 @@ def get_scan_history(limit=10):
 
 # Statistics
 def get_stats():
-    """Get overall statistics"""
+    """Get overall statistics (cached)"""
+    cache_key = 'stats'
+
+    # Try cache first
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return cached_data
+
+    # Fetch from Firebase
     db = get_db()
 
     stats = {
@@ -419,6 +500,9 @@ def get_stats():
         'videos': len(list(db.collection('files').where('is_video', '==', True).stream())),
         'documents': len(list(db.collection('files').where('is_document', '==', True).stream()))
     }
+
+    # Cache for 5 minutes (300 seconds)
+    cache.set(cache_key, stats, ttl=300)
 
     return stats
 

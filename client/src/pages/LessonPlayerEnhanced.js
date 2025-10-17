@@ -13,6 +13,7 @@ function LessonPlayerEnhanced() {
   const videoRef = useRef(null);
   const progressInterval = useRef(null);
   const shouldSeek = useRef(true);
+  const currentFileIdRef = useRef(null);
 
   const updateProgress = useCallback(async () => {
     if (!currentFile || !currentFile.is_video || !videoRef.current) return;
@@ -76,13 +77,21 @@ function LessonPlayerEnhanced() {
     }
   }, [lesson, currentFile]);
 
-  // Fetch signed URL when currentFile changes
+  // Fetch signed URL only when the file ID changes (not when progress updates)
   useEffect(() => {
     const fetchSignedUrl = async () => {
       if (!currentFile || !currentFile.is_video) {
         setVideoUrl(null);
+        currentFileIdRef.current = null;
         return;
       }
+
+      // Only fetch new URL if the file ID has actually changed
+      if (currentFileIdRef.current === currentFile.id) {
+        return;
+      }
+
+      currentFileIdRef.current = currentFile.id;
 
       try {
         const response = await authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`);

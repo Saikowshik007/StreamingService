@@ -12,6 +12,7 @@ from folder_watcher import start_watcher, stop_watcher, get_watcher
 from thumbnail_generator import generate_thumbnail_for_file, check_ffmpeg
 from auth_service import require_auth, optional_auth
 from url_signer import generate_signed_url, verify_signed_url, parse_signed_params
+from cache_service import get_cache
 
 # Configure logging
 logging.basicConfig(
@@ -439,6 +440,34 @@ def generate_thumbnails_endpoint():
         'generated': generated,
         'failed': failed
     })
+
+@api_bp.route('/api/cache/stats', methods=['GET'])
+def cache_stats():
+    """Get cache statistics"""
+    cache = get_cache()
+    stats = cache.get_stats()
+    return jsonify(stats)
+
+@api_bp.route('/api/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear all cache (admin only - consider adding auth)"""
+    cache = get_cache()
+    cache.clear_all()
+    return jsonify({'success': True, 'message': 'Cache cleared'})
+
+@api_bp.route('/api/cache/invalidate/course/<course_id>', methods=['POST'])
+def invalidate_course_cache(course_id):
+    """Invalidate all cache for a course"""
+    cache = get_cache()
+    cache.invalidate_course(course_id)
+    return jsonify({'success': True, 'message': f'Cache invalidated for course {course_id}'})
+
+@api_bp.route('/api/cache/invalidate/lesson/<lesson_id>', methods=['POST'])
+def invalidate_lesson_cache(lesson_id):
+    """Invalidate all cache for a lesson"""
+    cache = get_cache()
+    cache.invalidate_lesson(lesson_id)
+    return jsonify({'success': True, 'message': f'Cache invalidated for lesson {lesson_id}'})
 
 # Register the blueprint
 app.register_blueprint(api_bp)
