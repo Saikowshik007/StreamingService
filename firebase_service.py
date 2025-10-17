@@ -11,6 +11,7 @@ Collections structure:
 
 from firebase_config import get_db
 from cache_service import get_cache
+from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
 import logging
 
@@ -52,7 +53,7 @@ def create_course(title, description=None, instructor=None, folder_path=None, to
 def get_course_by_folder_path(folder_path):
     """Get course by folder path"""
     db = get_db()
-    docs = db.collection('courses').where('folder_path', '==', folder_path).limit(1).stream()
+    docs = db.collection('courses').where(filter=FieldFilter('folder_path', '==', folder_path)).limit(1).stream()
     for doc in docs:
         data = doc.to_dict()
         data['id'] = doc.id
@@ -144,7 +145,7 @@ def create_lesson(course_id, title, folder_path=None, order_index=0, description
 def get_lesson_by_folder_path(course_id, folder_path):
     """Get lesson by course_id and folder path"""
     db = get_db()
-    docs = db.collection('lessons').where('course_id', '==', course_id).where('folder_path', '==', folder_path).limit(1).stream()
+    docs = db.collection('lessons').where(filter=FieldFilter('course_id', '==', course_id)).where(filter=FieldFilter('folder_path', '==', folder_path)).limit(1).stream()
     for doc in docs:
         data = doc.to_dict()
         data['id'] = doc.id
@@ -180,10 +181,10 @@ def get_lessons_by_course(course_id, user_id='default_user', include_files=False
         lessons = []
 
         try:
-            query = db.collection('lessons').where('course_id', '==', course_id).order_by('order_index')
+            query = db.collection('lessons').where(filter=FieldFilter('course_id', '==', course_id)).order_by('order_index')
         except Exception as e:
             logger.warning(f"Failed to order lessons, using default order: {str(e)}")
-            query = db.collection('lessons').where('course_id', '==', course_id)
+            query = db.collection('lessons').where(filter=FieldFilter('course_id', '==', course_id))
 
         for doc in query.stream():
             lesson = doc.to_dict()
@@ -234,7 +235,7 @@ def create_file(lesson_id, course_id, filename, file_path, file_type, file_size,
 def get_file_by_path(file_path):
     """Get file by file path"""
     db = get_db()
-    docs = db.collection('files').where('file_path', '==', file_path).limit(1).stream()
+    docs = db.collection('files').where(filter=FieldFilter('file_path', '==', file_path)).limit(1).stream()
     for doc in docs:
         data = doc.to_dict()
         data['id'] = doc.id
@@ -293,10 +294,10 @@ def get_files_by_lesson(lesson_id, user_id='default_user', fetch_progress=True):
         files = []
 
         try:
-            query = db.collection('files').where('lesson_id', '==', lesson_id).order_by('order_index')
+            query = db.collection('files').where(filter=FieldFilter('lesson_id', '==', lesson_id)).order_by('order_index')
         except Exception as e:
             logger.warning(f"Failed to order files, using default order: {str(e)}")
-            query = db.collection('files').where('lesson_id', '==', lesson_id)
+            query = db.collection('files').where(filter=FieldFilter('lesson_id', '==', lesson_id))
 
         for doc in query.stream():
             file_data = doc.to_dict()
@@ -333,7 +334,7 @@ def get_all_video_files_without_thumbnails():
     files = []
 
     # Query for videos where thumbnail_base64 is None or doesn't exist
-    for doc in db.collection('files').where('is_video', '==', True).stream():
+    for doc in db.collection('files').where(filter=FieldFilter('is_video', '==', True)).stream():
         file_data = doc.to_dict()
         if not file_data.get('thumbnail_base64'):
             file_data['id'] = doc.id
@@ -347,7 +348,7 @@ def update_user_progress(user_id, file_id, lesson_id, course_id, progress_second
     db = get_db()
 
     # Check if progress exists
-    docs = db.collection('user_progress').where('user_id', '==', user_id).where('file_id', '==', file_id).limit(1).stream()
+    docs = db.collection('user_progress').where(filter=FieldFilter('user_id', '==', user_id)).where(filter=FieldFilter('file_id', '==', file_id)).limit(1).stream()
 
     progress_data = {
         'user_id': user_id,
@@ -376,7 +377,7 @@ def update_user_progress(user_id, file_id, lesson_id, course_id, progress_second
 def get_user_progress(user_id, file_id):
     """Get user progress for a file"""
     db = get_db()
-    docs = db.collection('user_progress').where('user_id', '==', user_id).where('file_id', '==', file_id).limit(1).stream()
+    docs = db.collection('user_progress').where(filter=FieldFilter('user_id', '==', user_id)).where(filter=FieldFilter('file_id', '==', file_id)).limit(1).stream()
 
     for doc in docs:
         data = doc.to_dict()
@@ -388,7 +389,7 @@ def get_user_progress(user_id, file_id):
 def get_course_progress(course_id, user_id='default_user'):
     """Get course progress for a user"""
     db = get_db()
-    docs = db.collection('course_progress').where('user_id', '==', user_id).where('course_id', '==', course_id).limit(1).stream()
+    docs = db.collection('course_progress').where(filter=FieldFilter('user_id', '==', user_id)).where(filter=FieldFilter('course_id', '==', course_id)).limit(1).stream()
 
     for doc in docs:
         data = doc.to_dict()
@@ -404,7 +405,7 @@ def update_course_progress(course_id, user_id='default_user'):
     # Get all files in the course
     total_files = 0
     total_duration = 0
-    for doc in db.collection('files').where('course_id', '==', course_id).stream():
+    for doc in db.collection('files').where(filter=FieldFilter('course_id', '==', course_id)).stream():
         total_files += 1
         file_data = doc.to_dict()
         if file_data.get('duration'):
@@ -413,7 +414,7 @@ def update_course_progress(course_id, user_id='default_user'):
     # Get completed files
     completed_files = 0
     watched_duration = 0
-    for doc in db.collection('user_progress').where('user_id', '==', user_id).where('course_id', '==', course_id).where('completed', '==', True).stream():
+    for doc in db.collection('user_progress').where(filter=FieldFilter('user_id', '==', user_id)).where(filter=FieldFilter('course_id', '==', course_id)).where(filter=FieldFilter('completed', '==', True)).stream():
         completed_files += 1
         progress_data = doc.to_dict()
         if progress_data.get('progress_seconds'):
@@ -424,7 +425,7 @@ def update_course_progress(course_id, user_id='default_user'):
         progress_percentage = (completed_files / total_files) * 100
 
     # Check if progress record exists
-    docs = db.collection('course_progress').where('user_id', '==', user_id).where('course_id', '==', course_id).limit(1).stream()
+    docs = db.collection('course_progress').where(filter=FieldFilter('user_id', '==', user_id)).where(filter=FieldFilter('course_id', '==', course_id)).limit(1).stream()
 
     progress_data = {
         'user_id': user_id,
@@ -497,8 +498,8 @@ def get_stats():
         'courses': len(list(db.collection('courses').stream())),
         'lessons': len(list(db.collection('lessons').stream())),
         'files': len(list(db.collection('files').stream())),
-        'videos': len(list(db.collection('files').where('is_video', '==', True).stream())),
-        'documents': len(list(db.collection('files').where('is_document', '==', True).stream()))
+        'videos': len(list(db.collection('files').where(filter=FieldFilter('is_video', '==', True)).stream())),
+        'documents': len(list(db.collection('files').where(filter=FieldFilter('is_document', '==', True)).stream()))
     }
 
     # Cache for 5 minutes (300 seconds)
