@@ -4,6 +4,7 @@ Expected structure: MainFolder/CourseName/Subject/lesson.mp4
 """
 
 import os
+import re
 import time
 from pathlib import Path
 from config import Config
@@ -13,6 +14,19 @@ from thumbnail_generator import generate_thumbnail_for_file, check_ffmpeg
 # Supported file extensions
 VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v'}
 DOCUMENT_EXTENSIONS = {'.pdf', '.doc', '.docx', '.txt', '.ppt', '.pptx', '.xls', '.xlsx', '.zip', '.rar'}
+
+def natural_sort_key(text):
+    """
+    Natural sort key for sorting filenames with numbers correctly.
+    Converts '1', '2', '10', '20' to be sorted as numbers, not strings.
+
+    Example:
+        ['1.mp4', '10.mp4', '2.mp4'] -> ['1.mp4', '2.mp4', '10.mp4']
+    """
+    def convert(part):
+        return int(part) if part.isdigit() else part.lower()
+
+    return [convert(c) for c in re.split('([0-9]+)', str(text))]
 
 def get_file_size(file_path):
     """Get file size in bytes"""
@@ -46,10 +60,13 @@ def scan_folder_structure(base_path):
     courses_data = {}
     files_found = 0
 
-    # Iterate through course folders (first level)
-    for course_folder in base_path.iterdir():
-        if not course_folder.is_dir():
-            continue
+    # Iterate through course folders (first level) - sorted naturally
+    course_folders = sorted(
+        [f for f in base_path.iterdir() if f.is_dir()],
+        key=lambda f: natural_sort_key(f.name)
+    )
+
+    for course_folder in course_folders:
 
         course_name = course_folder.name
         course_path = str(course_folder.relative_to(base_path))
@@ -60,8 +77,10 @@ def scan_folder_structure(base_path):
             'total_files': 0
         }
 
-        # Iterate through lesson folders (second level)
-        for lesson_folder in course_folder.iterdir():
+        # Iterate through lesson folders (second level) - sorted naturally
+        lesson_items = sorted(course_folder.iterdir(), key=lambda f: natural_sort_key(f.name))
+
+        for lesson_folder in lesson_items:
             if not lesson_folder.is_dir():
                 # Handle files directly in course folder
                 if is_video_file(lesson_folder.name) or is_document_file(lesson_folder.name):
@@ -93,20 +112,24 @@ def scan_folder_structure(base_path):
                 'files': []
             }
 
-            # Get all files in lesson folder
-            for file in lesson_folder.iterdir():
-                if file.is_file() and (is_video_file(file.name) or is_document_file(file.name)):
-                    file_info = {
-                        'filename': file.name,
-                        'path': str(file.relative_to(base_path)),
-                        'size': get_file_size(file),
-                        'is_video': is_video_file(file.name),
-                        'is_document': is_document_file(file.name),
-                        'extension': file.suffix.lower()
-                    }
-                    courses_data[course_name]['lessons'][lesson_name]['files'].append(file_info)
-                    courses_data[course_name]['total_files'] += 1
-                    files_found += 1
+            # Get all files in lesson folder (sorted naturally)
+            files_in_lesson = sorted(
+                [f for f in lesson_folder.iterdir() if f.is_file() and (is_video_file(f.name) or is_document_file(f.name))],
+                key=lambda f: natural_sort_key(f.name)
+            )
+
+            for file in files_in_lesson:
+                file_info = {
+                    'filename': file.name,
+                    'path': str(file.relative_to(base_path)),
+                    'size': get_file_size(file),
+                    'is_video': is_video_file(file.name),
+                    'is_document': is_document_file(file.name),
+                    'extension': file.suffix.lower()
+                }
+                courses_data[course_name]['lessons'][lesson_name]['files'].append(file_info)
+                courses_data[course_name]['total_files'] += 1
+                files_found += 1
 
     return courses_data, files_found
 
