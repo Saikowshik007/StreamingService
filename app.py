@@ -16,8 +16,9 @@ from url_signer import generate_signed_url, verify_signed_url, parse_signed_para
 from cache_service import get_cache
 from progress_sync_worker import start_progress_sync_worker, stop_progress_sync_worker
 from database import get_db_service
+import firebase_service  # Still needed for Firebase auth initialization
 
-# Initialize database adapter (PostgreSQL primary, Firebase fallback for compatibility)
+# Initialize database adapter (PostgreSQL primary, no Firebase fallback)
 db = get_db_adapter(use_postgres=True, use_firebase_fallback=False)
 
 # Configure logging
@@ -117,9 +118,9 @@ CORS(app,
     }
 )
 
-# Initialize Firebase
-logger.info("Initializing Firebase...")
-db.init_firebase()
+# Initialize Firebase (still needed for authentication)
+logger.info("Initializing Firebase for authentication...")
+firebase_service.init_firebase()
 
 # Start automatic folder watcher
 logger.info("Starting automatic folder watcher...")
