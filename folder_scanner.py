@@ -50,8 +50,9 @@ def is_document_file(filename):
 
 def scan_folder_structure(base_path):
     """
-    Scan folder structure and return organized data
-    Expected: base_path/CourseName/LessonFolder/files
+    Scan folder structure recursively using DFS and return organized data
+    Uses Path.rglob() to find all files at any depth
+    Expected: base_path/CourseName/any_nested_structure/files
     """
     base_path = Path(base_path)
     if not base_path.exists():
@@ -77,59 +78,56 @@ def scan_folder_structure(base_path):
             'total_files': 0
         }
 
-        # Iterate through lesson folders (second level) - sorted naturally
-        lesson_items = sorted(course_folder.iterdir(), key=lambda f: natural_sort_key(f.name))
+        # Use rglob to recursively find all files in the course folder
+        all_files = [
+            f for f in course_folder.rglob('*')
+            if f.is_file() and (is_video_file(f.name) or is_document_file(f.name))
+        ]
 
-        for lesson_folder in lesson_items:
-            if not lesson_folder.is_dir():
-                # Handle files directly in course folder
-                if is_video_file(lesson_folder.name) or is_document_file(lesson_folder.name):
-                    lesson_name = 'Main Content'
-                    if lesson_name not in courses_data[course_name]['lessons']:
-                        courses_data[course_name]['lessons'][lesson_name] = {
-                            'path': course_path,
-                            'files': []
-                        }
+        # Group files by their parent directory (lesson folder)
+        lessons_map = {}
+        for file in all_files:
+            # Get the immediate parent directory relative to course folder
+            parent_dir = file.parent
 
-                    file_info = {
-                        'filename': lesson_folder.name,
-                        'path': str(lesson_folder.relative_to(base_path)),
-                        'size': get_file_size(lesson_folder),
-                        'is_video': is_video_file(lesson_folder.name),
-                        'is_document': is_document_file(lesson_folder.name),
-                        'extension': lesson_folder.suffix.lower()
-                    }
-                    courses_data[course_name]['lessons'][lesson_name]['files'].append(file_info)
-                    courses_data[course_name]['total_files'] += 1
-                    files_found += 1
-                continue
+            # If file is directly in course folder, use 'Main Content'
+            if parent_dir == course_folder:
+                lesson_name = 'Main Content'
+                lesson_path = course_path
+            else:
+                # Use parent directory name as lesson name
+                lesson_name = parent_dir.name
+                lesson_path = str(parent_dir.relative_to(base_path))
 
-            lesson_name = lesson_folder.name
-            lesson_path = str(lesson_folder.relative_to(base_path))
-
-            courses_data[course_name]['lessons'][lesson_name] = {
-                'path': lesson_path,
-                'files': []
-            }
-
-            # Get all files in lesson folder (sorted naturally)
-            files_in_lesson = sorted(
-                [f for f in lesson_folder.iterdir() if f.is_file() and (is_video_file(f.name) or is_document_file(f.name))],
-                key=lambda f: natural_sort_key(f.name)
-            )
-
-            for file in files_in_lesson:
-                file_info = {
-                    'filename': file.name,
-                    'path': str(file.relative_to(base_path)),
-                    'size': get_file_size(file),
-                    'is_video': is_video_file(file.name),
-                    'is_document': is_document_file(file.name),
-                    'extension': file.suffix.lower()
+            # Initialize lesson if not exists
+            if lesson_name not in lessons_map:
+                lessons_map[lesson_name] = {
+                    'path': lesson_path,
+                    'files': []
                 }
-                courses_data[course_name]['lessons'][lesson_name]['files'].append(file_info)
-                courses_data[course_name]['total_files'] += 1
-                files_found += 1
+
+            # Add file info
+            file_info = {
+                'filename': file.name,
+                'path': str(file.relative_to(base_path)),
+                'size': get_file_size(file),
+                'is_video': is_video_file(file.name),
+                'is_document': is_document_file(file.name),
+                'extension': file.suffix.lower()
+            }
+            lessons_map[lesson_name]['files'].append(file_info)
+            courses_data[course_name]['total_files'] += 1
+            files_found += 1
+
+        # Sort lessons naturally and sort files within each lesson
+        for lesson_name in sorted(lessons_map.keys(), key=natural_sort_key):
+            lesson_data = lessons_map[lesson_name]
+            # Sort files naturally
+            lesson_data['files'] = sorted(
+                lesson_data['files'],
+                key=lambda f: natural_sort_key(f['filename'])
+            )
+            courses_data[course_name]['lessons'][lesson_name] = lesson_data
 
     return courses_data, files_found
 
