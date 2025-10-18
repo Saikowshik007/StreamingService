@@ -28,18 +28,75 @@ class EnhancedDatabaseService:
 
     def initialize_pool(self):
         """Create connection pool to PostgreSQL database."""
+        db_host = os.getenv('DB_HOST', 'localhost')
+        db_port = os.getenv('DB_PORT', '5432')
+        db_name = os.getenv('DB_NAME', 'streaming_service')
+        db_user = os.getenv('DB_USER', 'postgres')
+        db_password = os.getenv('DB_PASSWORD', 'postgres')
+
+        logger.info(f"Connecting to PostgreSQL at {db_host}:{db_port}/{db_name}")
+
         try:
             self.connection_pool = psycopg2.pool.SimpleConnectionPool(
                 1,  # minimum connections
                 20,  # maximum connections (increased for scanning)
-                host=os.getenv('DB_HOST', 'localhost'),
-                port=os.getenv('DB_PORT', '5432'),
-                database=os.getenv('DB_NAME', 'streaming_service'),
-                user=os.getenv('DB_USER', 'postgres'),
-                password=os.getenv('DB_PASSWORD', 'postgres')
+                host=db_host,
+                port=db_port,
+                database=db_name,
+                user=db_user,
+                password=db_password,
+                connect_timeout=5
             )
-            logger.info("Enhanced database connection pool created successfully")
+            logger.info("✓ Enhanced database connection pool created successfully")
+
+            # Try to create database if it doesn't exist
             self.initialize_schema()
+
+        except psycopg2.OperationalError as e:
+            error_msg = str(e)
+
+            # Check if database doesn't exist
+            if "does not exist" in error_msg and db_name in error_msg:
+                logger.warning(f"Database '{db_name}' does not exist. Attempting to create it...")
+                try:
+                    # Connect to default 'postgres' database to create our database
+                    temp_conn = psycopg2.connect(
+                        host=db_host,
+                        port=db_port,
+                        database='postgres',  # Connect to default database
+                        user=db_user,
+                        password=db_password
+                    )
+                    temp_conn.autocommit = True
+                    cursor = temp_conn.cursor()
+                    cursor.execute(f"CREATE DATABASE {db_name}")
+                    cursor.close()
+                    temp_conn.close()
+                    logger.info(f"✓ Database '{db_name}' created successfully")
+
+                    # Now create the connection pool to the new database
+                    self.connection_pool = psycopg2.pool.SimpleConnectionPool(
+                        1, 20,
+                        host=db_host,
+                        port=db_port,
+                        database=db_name,
+                        user=db_user,
+                        password=db_password
+                    )
+                    logger.info("✓ Connected to newly created database")
+                    self.initialize_schema()
+
+                except Exception as create_error:
+                    logger.error(f"Failed to create database: {str(create_error)}")
+                    raise
+            else:
+                logger.error(f"Failed to connect to PostgreSQL: {error_msg}")
+                logger.error("Please check:")
+                logger.error(f"  1. PostgreSQL is running on {db_host}:{db_port}")
+                logger.error(f"  2. Credentials are correct (user: {db_user})")
+                logger.error(f"  3. Run: python check_postgres.py")
+                raise
+
         except Exception as e:
             logger.error(f"Error creating connection pool: {str(e)}")
             raise

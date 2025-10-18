@@ -1,4 +1,7 @@
 services:
+  # PostgreSQL database - only needed if you don't have PostgreSQL already running
+  # If you have an existing PostgreSQL instance, you can skip this service
+  # and configure the connection in .env file
   postgres:
     image: postgres:16-alpine
     container_name: learning-platform-postgres
@@ -18,6 +21,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles:
+      - postgres  # Optional: start only when explicitly requested
 
   learning-platform-backend:
     build: .
@@ -34,17 +39,20 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=streaming_service
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      # PostgreSQL connection - use host.docker.internal to connect to host's PostgreSQL
+      # Or 'postgres' to use the docker-compose PostgreSQL service
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-streaming_service}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
     volumes:
       - D:/CourseMedia:/media:ro
       - ./data:/app/data
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # Only depend on postgres if it's being used (not when using external PostgreSQL)
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
       interval: 30s
