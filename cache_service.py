@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class CacheService:
     """Redis-based cache service for Firebase data"""
 
-    def __init__(self, host='localhost', port=6379, db=0):
+    def __init__(self, host='127.0.0.1', port=6379, db=0):
         """Initialize Redis connection"""
         self.redis_client = None
         self.host = host
