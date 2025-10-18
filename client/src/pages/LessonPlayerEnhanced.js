@@ -80,9 +80,9 @@ function LessonPlayerEnhanced() {
     }
   }, [lesson, currentFile]);
 
-  // Fetch signed URL only when the file ID changes (not when progress updates)
+  // Fetch signed URL and latest progress when the file ID changes
   useEffect(() => {
-    const fetchSignedUrl = async () => {
+    const fetchVideoData = async () => {
       if (!currentFile || !currentFile.is_video) {
         setVideoUrl(null);
         currentFileIdRef.current = null;
@@ -95,35 +95,56 @@ function LessonPlayerEnhanced() {
       }
 
       currentFileIdRef.current = currentFile.id;
+      hasSetInitialTime.current = false;
+      shouldSeek.current = true;
 
       try {
-        const response = await authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`);
-        const data = await response.json();
+        // Fetch both signed URL and latest progress in parallel
+        const [urlResponse, progressResponse] = await Promise.all([
+          authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`),
+          authenticatedFetch(`${API_URL}/api/progress/file/${currentFile.id}`)
+        ]);
+
+        const urlData = await urlResponse.json();
+        const progressData = await progressResponse.json();
+
+        // Update current file with latest progress from Redis/Firebase
+        setCurrentFile(prev => ({
+          ...prev,
+          progress_seconds: progressData.progress_seconds || 0,
+          progress_percentage: progressData.progress_percentage || 0,
+          completed: progressData.completed || false
+        }));
 
         // Construct full URL with signature and expiration
-        const signedUrl = `${API_URL}${data.url}`;
+        const signedUrl = `${API_URL}${urlData.url}`;
         setVideoUrl(signedUrl);
       } catch (err) {
-        console.error('Failed to fetch signed URL:', err);
-        setError('Failed to load video URL');
+        console.error('Failed to fetch video data:', err);
+        setError('Failed to load video');
       }
     };
 
-    fetchSignedUrl();
+    fetchVideoData();
   }, [currentFile]);
 
-  // Handle video loaded - seek to saved position
-  const handleVideoLoaded = useCallback(() => {
+  // Handle video ready to play - seek to saved position
+  const handleVideoCanPlay = useCallback(() => {
     const video = videoRef.current;
-    if (!video || !currentFile) return;
+    if (!video || !currentFile || hasSetInitialTime.current) return;
 
-    // Seek to saved position only once when video loads
+    // Seek to saved position only once when video is ready
     if (shouldSeek.current && currentFile.progress_seconds && currentFile.progress_seconds > 5) {
       console.log(`Seeking to saved position: ${currentFile.progress_seconds}s`);
-      video.currentTime = currentFile.progress_seconds;
+
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        video.currentTime = currentFile.progress_seconds;
+        hasSetInitialTime.current = true;
+      });
+    } else {
       hasSetInitialTime.current = true;
     }
-    shouldSeek.current = true; // Reset for next video
   }, [currentFile]);
 
   useEffect(() => {
@@ -223,7 +244,7 @@ function LessonPlayerEnhanced() {
                 src={videoUrl}
                 onEnded={handleVideoEnd}
                 onPause={updateProgress}
-                onLoadedMetadata={handleVideoLoaded}
+                onCanPlay={handleVideoCanPlay}
                 preload="metadata"
               />
 

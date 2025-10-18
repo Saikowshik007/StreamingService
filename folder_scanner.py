@@ -95,8 +95,10 @@ def scan_folder_structure(base_path):
                 lesson_name = 'Main Content'
                 lesson_path = course_path
             else:
-                # Use parent directory name as lesson name
-                lesson_name = parent_dir.name
+                # Use full relative path from course folder as lesson name
+                # This preserves the folder hierarchy (e.g., "f1/f2" instead of just "f2")
+                lesson_relative_path = parent_dir.relative_to(course_folder)
+                lesson_name = str(lesson_relative_path).replace('\\', '/')
                 lesson_path = str(parent_dir.relative_to(base_path))
 
             # Initialize lesson if not exists

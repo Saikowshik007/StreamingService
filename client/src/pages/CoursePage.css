@@ -109,3 +109,94 @@
   font-size: 1.1rem;
   color: #666;
 }
+
+/* Tree view styles */
+.lessons-tree {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  margin-bottom: 50px;
+}
+
+.folder-node {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.folder-node:last-child {
+  border-bottom: none;
+}
+
+.folder-header {
+  display: flex;
+  align-items: center;
+  padding: 15px 20px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  user-select: none;
+}
+
+.folder-header:hover {
+  background-color: #f8f8f8;
+}
+
+.folder-icon {
+  font-size: 1.3rem;
+  margin-right: 10px;
+}
+
+.folder-name {
+  flex: 1;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.folder-toggle {
+  font-size: 0.8rem;
+  color: #999;
+  margin-left: 10px;
+}
+
+.folder-children {
+  background-color: #fafafa;
+}
+
+/* Update lesson-item for tree view */
+.lessons-tree .lesson-item {
+  display: flex;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  text-decoration: none;
+  color: inherit;
+  transition: background-color 0.2s;
+}
+
+.lessons-tree .lesson-item:hover {
+  background-color: #f0f0f0;
+}
+
+.lesson-icon {
+  font-size: 1.2rem;
+  margin-right: 12px;
+}
+
+.lessons-tree .lesson-details h3 {
+  font-size: 1.05rem;
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: #333;
+}
+
+.lessons-tree .lesson-details p {
+  font-size: 0.9rem;
+  color: #666;
+  margin: 0;
+}
+
+.lessons-tree .lesson-arrow {
+  font-size: 1.2rem;
+  color: #999;
+  margin-left: 15px;
+}

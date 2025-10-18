@@ -4,6 +4,7 @@ Redis cache service for caching Firebase metadata
 import redis
 import json
 import logging
+import os
 from datetime import datetime
 from functools import wraps
 from typing import Any, Optional, Callable
@@ -13,8 +14,12 @@ logger = logging.getLogger(__name__)
 class CacheService:
     """Redis-based cache service for Firebase data"""
 
-    def __init__(self, host='127.0.0.1', port=6379, db=0):
-        """Initialize Redis connection"""
+    def __init__(self, host=None, port=None, db=None):
+        """Initialize Redis connection with environment variable support"""
+        # Use environment variables with fallbacks
+        host = host or os.getenv('REDIS_HOST', '127.0.0.1')
+        port = port or int(os.getenv('REDIS_PORT', '6379'))
+        db = db or int(os.getenv('REDIS_DB', '0'))
         self.redis_client = None
         self.host = host
         self.port = port

@@ -3,6 +3,102 @@ import { useParams, Link } from 'react-router-dom';
 import API_URL, { authenticatedFetch } from '../config';
 import './CoursePage.css';
 
+// Build a hierarchical tree from flat lesson list
+function buildLessonTree(lessons) {
+  const tree = {};
+
+  lessons.forEach(lesson => {
+    const parts = lesson.title.split('/');
+
+    // If no slash, it's a top-level lesson
+    if (parts.length === 1) {
+      if (!tree[lesson.title]) {
+        tree[lesson.title] = {
+          type: 'lesson',
+          lesson: lesson,
+          children: {}
+        };
+      }
+    } else {
+      // Build nested structure
+      let current = tree;
+
+      for (let i = 0; i < parts.length - 1; i++) {
+        const folderName = parts[i];
+        if (!current[folderName]) {
+          current[folderName] = {
+            type: 'folder',
+            name: folderName,
+            children: {}
+          };
+        }
+        current = current[folderName].children;
+      }
+
+      // Last part is the actual lesson
+      const lessonName = parts[parts.length - 1];
+      current[lessonName] = {
+        type: 'lesson',
+        lesson: lesson,
+        children: {}
+      };
+    }
+  });
+
+  return tree;
+}
+
+// TreeNode component for rendering folders and lessons
+function TreeNode({ name, node, depth = 0 }) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  if (node.type === 'lesson') {
+    return (
+      <Link
+        to={`/lesson/${node.lesson.id}`}
+        className="lesson-item"
+        style={{ paddingLeft: `${depth * 20 + 10}px` }}
+      >
+        <div className="lesson-icon">🎥</div>
+        <div className="lesson-details">
+          <h3>{name}</h3>
+          {node.lesson.description && <p>{node.lesson.description}</p>}
+        </div>
+        <div className="lesson-arrow">→</div>
+      </Link>
+    );
+  }
+
+  // Folder node
+  const hasChildren = Object.keys(node.children).length > 0;
+
+  return (
+    <div className="folder-node">
+      <div
+        className="folder-header"
+        style={{ paddingLeft: `${depth * 20 + 10}px` }}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <span className="folder-icon">{isOpen ? '📂' : '📁'}</span>
+        <span className="folder-name">{name}</span>
+        <span className="folder-toggle">{isOpen ? '▼' : '▶'}</span>
+      </div>
+      {isOpen && hasChildren && (
+        <div className="folder-children">
+          {Object.entries(node.children).map(([childName, childNode]) => (
+            <TreeNode
+              key={childName}
+              name={childName}
+              node={childNode}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CoursePage() {
   const { courseId } = useParams();
   const [course, setCourse] = useState(null);
@@ -37,6 +133,11 @@ function CoursePage() {
     return <div className="error">Course not found</div>;
   }
 
+  // Build tree structure from lessons
+  const lessonTree = course?.lessons && course.lessons.length > 0
+    ? buildLessonTree(course.lessons)
+    : {};
+
   return (
     <div className="course-page">
       <div className="course-header">
@@ -48,26 +149,10 @@ function CoursePage() {
       </div>
       <div className="container">
         <h2 className="section-title">Course Content</h2>
-        {course.lessons && course.lessons.length > 0 ? (
-          <div className="lessons-list">
-            {course.lessons.map((lesson, index) => (
-              <Link
-                to={`/lesson/${lesson.id}`}
-                key={lesson.id}
-                className="lesson-item"
-              >
-                <div className="lesson-number">{index + 1}</div>
-                <div className="lesson-details">
-                  <h3>{lesson.title}</h3>
-                  <p>{lesson.description}</p>
-                  {lesson.duration && (
-                    <span className="lesson-duration">
-                      {Math.floor(lesson.duration / 60)}:{(lesson.duration % 60).toString().padStart(2, '0')} min
-                    </span>
-                  )}
-                </div>
-                <div className="lesson-arrow">→</div>
-              </Link>
+        {Object.keys(lessonTree).length > 0 ? (
+          <div className="lessons-tree">
+            {Object.entries(lessonTree).map(([name, node]) => (
+              <TreeNode key={name} name={name} node={node} depth={0} />
             ))}
           </div>
         ) : (

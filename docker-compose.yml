@@ -11,6 +11,9 @@ services:
       - MEDIA_PATH=/media
       - PORT=5000
       - DB_PATH=/app/data/database.db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
     volumes:
       - D:/CourseMedia:/media:ro
       - ./data:/app/data

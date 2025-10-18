@@ -1,6 +1,7 @@
 from flask import Flask, request, send_file, jsonify, Response, Blueprint
 from flask_cors import CORS
 import os
+import time
 import mimetypes
 import logging
 import atexit
@@ -13,6 +14,7 @@ from thumbnail_generator import generate_thumbnail_for_file, check_ffmpeg
 from auth_service import require_auth, optional_auth
 from url_signer import generate_signed_url, verify_signed_url, parse_signed_params
 from cache_service import get_cache
+from progress_sync_worker import start_progress_sync_worker, stop_progress_sync_worker
 
 # Configure logging
 logging.basicConfig(
@@ -119,8 +121,13 @@ db.init_firebase()
 logger.info("Starting automatic folder watcher...")
 start_watcher()
 
+# Start progress sync worker (Redis -> Firebase every 30 seconds)
+logger.info("Starting progress sync worker...")
+start_progress_sync_worker(sync_interval=30)
+
 # Register cleanup on exit
 atexit.register(stop_watcher)
+atexit.register(stop_progress_sync_worker)
 
 
 @api_bp.route('/api/courses', methods=['GET'])
@@ -308,7 +315,7 @@ def get_thumbnail(file_id):
 @api_bp.route('/api/progress', methods=['POST'])
 @require_auth
 def update_progress_endpoint():
-    """Update user progress for a file"""
+    """Update user progress for a file - writes to Redis immediately"""
     data = request.json
     user_id = request.current_user['uid']
     file_id = data.get('file_id')
@@ -322,18 +329,70 @@ def update_progress_endpoint():
     if not file_info:
         return jsonify({'error': 'File not found'}), 404
 
-    # Update progress
-    db.update_user_progress(
-        user_id=user_id,
-        file_id=file_id,
-        lesson_id=file_info['lesson_id'],
-        course_id=file_info['course_id'],
-        progress_seconds=progress_seconds,
-        progress_percentage=progress_percentage,
-        completed=completed
-    )
+    # Get cache service
+    cache = get_cache()
+
+    # Cache key for this progress entry
+    cache_key = f"progress:{user_id}:{file_id}"
+
+    # Store progress in Redis immediately (fast write)
+    progress_data = {
+        'user_id': user_id,
+        'file_id': file_id,
+        'lesson_id': file_info['lesson_id'],
+        'course_id': file_info['course_id'],
+        'progress_seconds': progress_seconds,
+        'progress_percentage': progress_percentage,
+        'completed': completed,
+        'last_updated': int(time.time())
+    }
+
+    if cache.enabled:
+        # Store in Redis with 24 hour TTL
+        cache.set(cache_key, progress_data, ttl=86400)
+
+        # Mark this progress as dirty (needs Firebase sync)
+        dirty_key = f"progress:dirty:{user_id}:{file_id}"
+        cache.set(dirty_key, True, ttl=86400)
+    else:
+        # If Redis is unavailable, fall back to direct Firebase write
+        db.update_user_progress(
+            user_id=user_id,
+            file_id=file_id,
+            lesson_id=file_info['lesson_id'],
+            course_id=file_info['course_id'],
+            progress_seconds=progress_seconds,
+            progress_percentage=progress_percentage,
+            completed=completed
+        )
 
     return jsonify({'success': True})
+
+@api_bp.route('/api/progress/file/<file_id>', methods=['GET'])
+@require_auth
+def get_file_progress_endpoint(file_id):
+    """Get progress for a specific file - tries Redis first, then Firebase"""
+    user_id = request.current_user['uid']
+
+    cache = get_cache()
+    cache_key = f"progress:{user_id}:{file_id}"
+
+    # Try Redis first
+    if cache.enabled:
+        progress_data = cache.get(cache_key)
+        if progress_data:
+            logger.debug(f"Progress cache HIT for file {file_id}")
+            return jsonify(progress_data)
+
+    # Fall back to Firebase
+    logger.debug(f"Progress cache MISS for file {file_id}, fetching from Firebase")
+    progress = db.get_user_progress(user_id, file_id)
+
+    # Cache the result from Firebase
+    if progress and cache.enabled:
+        cache.set(cache_key, progress, ttl=86400)
+
+    return jsonify(progress or {})
 
 @api_bp.route('/api/progress/course/<course_id>', methods=['GET'])
 @require_auth
