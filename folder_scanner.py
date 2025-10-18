@@ -8,8 +8,11 @@ import re
 import time
 from pathlib import Path
 from config import Config
-import firebase_service as db
+from db_adapter import get_db_adapter
 from thumbnail_generator import generate_thumbnail_for_file, check_ffmpeg
+
+# Get database adapter (PostgreSQL primary, no Firebase fallback to avoid quota issues)
+db = get_db_adapter(use_postgres=True, use_firebase_fallback=False)
 
 # Supported file extensions
 VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v'}

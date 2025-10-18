@@ -7,7 +7,7 @@ import logging
 import atexit
 from pathlib import Path
 from config import Config
-import firebase_service as db
+from db_adapter import get_db_adapter
 from folder_scanner import scan_and_import
 from folder_watcher import start_watcher, stop_watcher, get_watcher
 from thumbnail_generator import generate_thumbnail_for_file, check_ffmpeg
@@ -16,6 +16,9 @@ from url_signer import generate_signed_url, verify_signed_url, parse_signed_para
 from cache_service import get_cache
 from progress_sync_worker import start_progress_sync_worker, stop_progress_sync_worker
 from database import get_db_service
+
+# Initialize database adapter (PostgreSQL primary, Firebase fallback for compatibility)
+db = get_db_adapter(use_postgres=True, use_firebase_fallback=False)
 
 # Configure logging
 logging.basicConfig(
@@ -136,7 +139,20 @@ atexit.register(stop_progress_sync_worker)
 def get_courses():
     """Get all courses with progress"""
     user_id = request.current_user['uid']
-    courses = db.get_all_courses(user_id)
+    courses = db.get_all_courses()
+
+    # Add progress information to each course
+    for course in courses:
+        progress = db.get_course_progress(course['id'], user_id)
+        if progress:
+            course['progress_percentage'] = progress.get('progress_percentage', 0)
+            course['completed_files'] = progress.get('completed_files', 0)
+            course['progress_total_files'] = progress.get('total_files', 0)
+        else:
+            course['progress_percentage'] = 0
+            course['completed_files'] = 0
+            course['progress_total_files'] = 0
+
     return jsonify(courses)
 
 @api_bp.route('/api/courses/<course_id>', methods=['GET'])
@@ -151,12 +167,35 @@ def get_course(course_id):
 
     # Get progress
     progress = db.get_course_progress(course_id, user_id)
-    course['progress_percentage'] = progress.get('progress_percentage', 0)
-    course['completed_files'] = progress.get('completed_files', 0)
-    course['progress_total_files'] = progress.get('total_files', 0)
+    if progress:
+        course['progress_percentage'] = progress.get('progress_percentage', 0)
+        course['completed_files'] = progress.get('completed_files', 0)
+        course['progress_total_files'] = progress.get('total_files', 0)
+    else:
+        course['progress_percentage'] = 0
+        course['completed_files'] = 0
+        course['progress_total_files'] = 0
 
     # Get lessons with files
-    course['lessons'] = db.get_lessons_by_course(course_id, user_id)
+    lessons = db.get_lessons_by_course_id(course_id)
+
+    # Add files to each lesson
+    for lesson in lessons:
+        lesson['files'] = db.get_files_by_lesson_id(lesson['id'])
+
+        # Add progress to each file
+        for file in lesson['files']:
+            file_progress = db.get_user_progress(user_id, file['id'])
+            if file_progress:
+                file['progress_seconds'] = file_progress.get('progress_seconds', 0)
+                file['progress_percentage'] = file_progress.get('progress_percentage', 0)
+                file['completed'] = file_progress.get('completed', False)
+            else:
+                file['progress_seconds'] = 0
+                file['progress_percentage'] = 0
+                file['completed'] = False
+
+    course['lessons'] = lessons
 
     return jsonify(course)
 
@@ -166,9 +205,26 @@ def get_lesson(lesson_id):
     """Get a specific lesson with files"""
     user_id = request.current_user['uid']
 
-    lesson = db.get_lesson_by_id(lesson_id, user_id)
+    lesson = db.get_lesson_by_id(lesson_id)
     if not lesson:
         return jsonify({'error': 'Lesson not found'}), 404
+
+    # Add files to lesson
+    files = db.get_files_by_lesson_id(lesson_id)
+
+    # Add progress to each file
+    for file in files:
+        file_progress = db.get_user_progress(user_id, file['id'])
+        if file_progress:
+            file['progress_seconds'] = file_progress.get('progress_seconds', 0)
+            file['progress_percentage'] = file_progress.get('progress_percentage', 0)
+            file['completed'] = file_progress.get('completed', False)
+        else:
+            file['progress_seconds'] = 0
+            file['progress_percentage'] = 0
+            file['completed'] = False
+
+    lesson['files'] = files
 
     return jsonify(lesson)
 
@@ -178,9 +234,20 @@ def get_file_info(file_id):
     """Get file information"""
     user_id = request.current_user['uid']
 
-    file = db.get_file_by_id(file_id, user_id)
+    file = db.get_file_by_id(file_id)
     if not file:
         return jsonify({'error': 'File not found'}), 404
+
+    # Add progress
+    file_progress = db.get_user_progress(user_id, file_id)
+    if file_progress:
+        file['progress_seconds'] = file_progress.get('progress_seconds', 0)
+        file['progress_percentage'] = file_progress.get('progress_percentage', 0)
+        file['completed'] = file_progress.get('completed', False)
+    else:
+        file['progress_seconds'] = 0
+        file['progress_percentage'] = 0
+        file['completed'] = False
 
     return jsonify(file)
 
@@ -194,7 +261,7 @@ def get_signed_stream_url(file_id):
     user_id = request.current_user['uid']
 
     # Verify the file exists and user has access
-    file = db.get_file_by_id(file_id, user_id)
+    file = db.get_file_by_id(file_id)
     if not file or not file.get('is_video'):
         return jsonify({'error': 'Video file not found'}), 404
 
@@ -229,7 +296,7 @@ def stream_file(file_id):
     elif hasattr(request, 'current_user') and request.current_user:
         # Bearer token authentication
         user_id = request.current_user['uid']
-        file = db.get_file_by_id(file_id, user_id)
+        file = db.get_file_by_id(file_id)
     else:
         # No authentication provided
         return jsonify({'error': 'Authentication required'}), 401
