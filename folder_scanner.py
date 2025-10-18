@@ -260,10 +260,7 @@ def scan_and_import(base_path=None, rescan=False):
     start_time = time.time()
 
     try:
-        # Initialize Firebase
-        db.init_firebase()
-
-        # Scan folders
+        # Scan folders (Firebase already initialized in app.py)
         courses_data, files_found = scan_folder_structure(base_path)
 
         print(f"\nFound {len(courses_data)} courses with {files_found} files")
