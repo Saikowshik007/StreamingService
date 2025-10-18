@@ -15,6 +15,7 @@ from auth_service import require_auth, optional_auth
 from url_signer import generate_signed_url, verify_signed_url, parse_signed_params
 from cache_service import get_cache
 from progress_sync_worker import start_progress_sync_worker, stop_progress_sync_worker
+from database import get_db_service
 
 # Configure logging
 logging.basicConfig(
@@ -315,7 +316,7 @@ def get_thumbnail(file_id):
 @api_bp.route('/api/progress', methods=['POST'])
 @require_auth
 def update_progress_endpoint():
-    """Update user progress for a file - writes to Redis immediately"""
+    """Update user progress for a file - writes to PostgreSQL and Redis"""
     data = request.json
     user_id = request.current_user['uid']
     file_id = data.get('file_id')
@@ -329,18 +330,38 @@ def update_progress_endpoint():
     if not file_info:
         return jsonify({'error': 'File not found'}), 404
 
+    lesson_id = file_info.get('lesson_id')
+    course_id = file_info.get('course_id')
+
+    # Primary: Write to PostgreSQL database
+    try:
+        postgres_db = get_db_service()
+        postgres_db.update_file_progress(
+            user_id=user_id,
+            file_id=file_id,
+            lesson_id=lesson_id,
+            course_id=course_id,
+            progress_seconds=progress_seconds,
+            progress_percentage=progress_percentage,
+            completed=completed
+        )
+        logger.info(f"Progress saved to PostgreSQL for user {user_id}, file {file_id}")
+    except Exception as e:
+        logger.error(f"Failed to save progress to PostgreSQL: {str(e)}")
+        # Continue to Redis/Firebase even if PostgreSQL fails
+
     # Get cache service
     cache = get_cache()
 
     # Cache key for this progress entry
     cache_key = f"progress:{user_id}:{file_id}"
 
-    # Store progress in Redis immediately (fast write)
+    # Store progress in Redis immediately (fast read cache)
     progress_data = {
         'user_id': user_id,
         'file_id': file_id,
-        'lesson_id': file_info['lesson_id'],
-        'course_id': file_info['course_id'],
+        'lesson_id': lesson_id,
+        'course_id': course_id,
         'progress_seconds': progress_seconds,
         'progress_percentage': progress_percentage,
         'completed': completed,
@@ -359,8 +380,8 @@ def update_progress_endpoint():
         db.update_user_progress(
             user_id=user_id,
             file_id=file_id,
-            lesson_id=file_info['lesson_id'],
-            course_id=file_info['course_id'],
+            lesson_id=lesson_id,
+            course_id=course_id,
             progress_seconds=progress_seconds,
             progress_percentage=progress_percentage,
             completed=completed
@@ -371,18 +392,32 @@ def update_progress_endpoint():
 @api_bp.route('/api/progress/file/<file_id>', methods=['GET'])
 @require_auth
 def get_file_progress_endpoint(file_id):
-    """Get progress for a specific file - tries Redis first, then Firebase"""
+    """Get progress for a specific file - tries Redis first, then PostgreSQL, then Firebase"""
     user_id = request.current_user['uid']
 
     cache = get_cache()
     cache_key = f"progress:{user_id}:{file_id}"
 
-    # Try Redis first
+    # Try Redis first (fastest)
     if cache.enabled:
         progress_data = cache.get(cache_key)
         if progress_data:
             logger.debug(f"Progress cache HIT for file {file_id}")
             return jsonify(progress_data)
+
+    # Try PostgreSQL (primary database)
+    try:
+        postgres_db = get_db_service()
+        progress = postgres_db.get_file_progress(user_id, file_id)
+
+        if progress:
+            logger.debug(f"Progress found in PostgreSQL for file {file_id}")
+            # Cache the result
+            if cache.enabled:
+                cache.set(cache_key, progress, ttl=86400)
+            return jsonify(progress)
+    except Exception as e:
+        logger.error(f"Failed to get progress from PostgreSQL: {str(e)}")
 
     # Fall back to Firebase
     logger.debug(f"Progress cache MISS for file {file_id}, fetching from Firebase")
@@ -397,8 +432,21 @@ def get_file_progress_endpoint(file_id):
 @api_bp.route('/api/progress/course/<course_id>', methods=['GET'])
 @require_auth
 def get_course_progress_endpoint(course_id):
-    """Get course progress for a user"""
+    """Get course progress for a user - tries PostgreSQL first, then Firebase"""
     user_id = request.current_user['uid']
+
+    # Try PostgreSQL first
+    try:
+        postgres_db = get_db_service()
+        progress = postgres_db.get_course_progress(user_id, course_id)
+
+        if progress:
+            logger.debug(f"Course progress found in PostgreSQL for course {course_id}")
+            return jsonify(progress)
+    except Exception as e:
+        logger.error(f"Failed to get course progress from PostgreSQL: {str(e)}")
+
+    # Fall back to Firebase
     progress = db.get_course_progress(course_id, user_id)
     return jsonify(progress)
 
