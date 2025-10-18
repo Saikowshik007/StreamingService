@@ -87,11 +87,17 @@ class ProgressSyncWorker:
 
             for dirty_key in dirty_keys:
                 try:
+                    # Handle both string and bytes keys
+                    if isinstance(dirty_key, bytes):
+                        dirty_key_str = dirty_key.decode('utf-8')
+                    else:
+                        dirty_key_str = dirty_key
+
                     # Extract user_id and file_id from the key
                     # Format: progress:dirty:user_id:file_id
-                    parts = dirty_key.decode('utf-8').split(':', 3)
+                    parts = dirty_key_str.split(':', 3)
                     if len(parts) != 4:
-                        logger.warning(f"Invalid dirty key format: {dirty_key}")
+                        logger.warning(f"Invalid dirty key format: {dirty_key_str}")
                         continue
 
                     user_id = parts[2]
@@ -104,7 +110,7 @@ class ProgressSyncWorker:
                     if not progress_data:
                         logger.warning(f"Progress data not found for {progress_key}")
                         # Clean up the dirty marker
-                        self.cache.delete(dirty_key.decode('utf-8'))
+                        self.cache.delete(dirty_key_str)
                         continue
 
                     # Sync to Firebase
@@ -119,7 +125,7 @@ class ProgressSyncWorker:
                     )
 
                     # Remove the dirty marker after successful sync
-                    self.cache.delete(dirty_key.decode('utf-8'))
+                    self.cache.delete(dirty_key_str)
 
                     synced_count += 1
                     logger.debug(f"Synced progress for user {user_id}, file {file_id}")
