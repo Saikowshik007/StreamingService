@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
+import videojs from 'video.js';
+import 'video.js/dist/video-js.css';
+import '@videojs/themes/dist/city/index.css';
 import API_URL, { authenticatedFetch } from '../config';
 import './LessonPlayerEnhanced.css';
 
@@ -10,15 +13,14 @@ function LessonPlayerEnhanced() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  
   const videoRef = useRef(null);
+  const playerRef = useRef(null);
   const progressInterval = useRef(null);
-  const shouldSeek = useRef(true);
   const currentFileIdRef = useRef(null);
-  const hasSetInitialTime = useRef(false);
   const savedProgressSeconds = useRef(0);
   const currentFileRef = useRef(null);
+  const hasSeekedToProgress = useRef(false);
 
   // Keep ref in sync with state for cleanup
   useEffect(() => {
@@ -26,12 +28,17 @@ function LessonPlayerEnhanced() {
   }, [currentFile]);
 
   const updateProgress = useCallback(async () => {
-    if (!currentFile || !currentFile.is_video || !videoRef.current) return;
+    if (!currentFile || !currentFile.is_video || !playerRef.current) return;
 
-    const video = videoRef.current;
-    const progress_seconds = Math.floor(video.currentTime);
-    const progress_percentage = (video.currentTime / video.duration) * 100;
-    const completed = video.currentTime >= video.duration - 2;
+    const player = playerRef.current;
+    const currentTime = player.currentTime();
+    const duration = player.duration();
+    
+    if (!duration || isNaN(duration)) return;
+
+    const progress_seconds = Math.floor(currentTime);
+    const progress_percentage = (currentTime / duration) * 100;
+    const completed = currentTime >= duration - 2;
 
     try {
       await authenticatedFetch(`${API_URL}/api/progress`, {
@@ -44,8 +51,7 @@ function LessonPlayerEnhanced() {
         })
       });
 
-      // Update local state without triggering seek
-      shouldSeek.current = false;
+      // Update local state
       setCurrentFile(prev => ({
         ...prev,
         progress_seconds,
@@ -60,12 +66,17 @@ function LessonPlayerEnhanced() {
   // Save progress using refs (for cleanup/unmount)
   const saveProgressOnUnmount = useCallback(async () => {
     const file = currentFileRef.current;
-    const video = videoRef.current;
-    if (!file || !file.is_video || !video || !video.duration) return;
+    const player = playerRef.current;
+    if (!file || !file.is_video || !player) return;
 
-    const progress_seconds = Math.floor(video.currentTime);
-    const progress_percentage = (video.currentTime / video.duration) * 100;
-    const completed = video.currentTime >= video.duration - 2;
+    const currentTime = player.currentTime();
+    const duration = player.duration();
+    
+    if (!duration || isNaN(duration)) return;
+
+    const progress_seconds = Math.floor(currentTime);
+    const progress_percentage = (currentTime / duration) * 100;
+    const completed = currentTime >= duration - 2;
 
     try {
       await authenticatedFetch(`${API_URL}/api/progress`, {
@@ -99,7 +110,7 @@ function LessonPlayerEnhanced() {
     fetchLesson();
 
     return () => {
-      // Save progress when component unmounts (navigating to another page)
+      // Save progress when component unmounts
       saveProgressOnUnmount();
 
       if (progressInterval.current) {
@@ -132,8 +143,7 @@ function LessonPlayerEnhanced() {
       }
 
       currentFileIdRef.current = currentFile.id;
-      hasSetInitialTime.current = false;
-      shouldSeek.current = true;
+      hasSeekedToProgress.current = false;
       savedProgressSeconds.current = 0;
 
       try {
@@ -146,8 +156,10 @@ function LessonPlayerEnhanced() {
         const urlData = await urlResponse.json();
         const progressData = await progressResponse.json();
 
-        // Store progress in ref for immediate access in onCanPlay
+        // Store progress in ref for immediate access
         savedProgressSeconds.current = progressData.progress_seconds || 0;
+
+        console.log(`Loaded progress for file ${currentFile.id}: ${savedProgressSeconds.current}s`);
 
         // Update current file with latest progress from Redis/Firebase
         setCurrentFile(prev => ({
@@ -169,86 +181,104 @@ function LessonPlayerEnhanced() {
     fetchVideoData();
   }, [currentFile]);
 
-  // Handle video ready to play - seek to saved position
-  const handleVideoCanPlay = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || hasSetInitialTime.current) return;
-
-    // Seek to saved position only once when video is ready
-    // Use ref for progress_seconds to avoid race condition with state updates
-    const progressToSeek = savedProgressSeconds.current;
-    if (shouldSeek.current && progressToSeek > 5) {
-      console.log(`Seeking to saved position: ${progressToSeek}s`);
-      video.currentTime = progressToSeek;
-    }
-    hasSetInitialTime.current = true;
-  }, []);
-
+  // Initialize Video.js player
   useEffect(() => {
-    if (currentFile && currentFile.is_video) {
-      // Reset flag when switching videos
-      hasSetInitialTime.current = false;
+    if (!videoRef.current || !videoUrl) return;
 
-      // Update progress every 5 seconds
-      progressInterval.current = setInterval(() => {
-        const video = videoRef.current;
-        if (video && !video.paused) {
-          updateProgress();
+    // Dispose existing player
+    if (playerRef.current) {
+      playerRef.current.dispose();
+      playerRef.current = null;
+    }
+
+    // Initialize new player
+    const player = videojs(videoRef.current, {
+      controls: true,
+      responsive: true,
+      fluid: true,
+      playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+      controlBar: {
+        children: [
+          'playToggle',
+          'volumePanel',
+          'currentTimeDisplay',
+          'timeDivider',
+          'durationDisplay',
+          'progressControl',
+          'remainingTimeDisplay',
+          'playbackRateMenuButton',
+          'chaptersButton',
+          'subtitlesButton',
+          'captionsButton',
+          'fullscreenToggle'
+        ]
+      }
+    });
+
+    playerRef.current = player;
+
+    // Set video source
+    player.src({
+      src: videoUrl,
+      type: 'video/mp4'
+    });
+
+    // Handle when video metadata is loaded
+    player.on('loadedmetadata', () => {
+      const progressToSeek = savedProgressSeconds.current;
+      
+      // Seek to saved position if it exists and we haven't seeked yet
+      if (!hasSeekedToProgress.current && progressToSeek > 5) {
+        console.log(`Seeking to saved position: ${progressToSeek}s`);
+        player.currentTime(progressToSeek);
+        hasSeekedToProgress.current = true;
+      }
+    });
+
+    // Handle video end
+    player.on('ended', () => {
+      updateProgress();
+      // Auto-play next video if available
+      if (lesson && lesson.files) {
+        const currentIndex = lesson.files.findIndex(f => f.id === currentFile.id);
+        if (currentIndex < lesson.files.length - 1) {
+          const nextFile = lesson.files[currentIndex + 1];
+          if (nextFile.is_video) {
+            setTimeout(() => setCurrentFile(nextFile), 1000);
+          }
         }
-      }, 5000);
+      }
+    });
 
-      return () => {
-        if (progressInterval.current) {
-          clearInterval(progressInterval.current);
-        }
-      };
-    }
-  }, [currentFile, updateProgress]);
+    // Handle pause to save progress
+    player.on('pause', () => {
+      updateProgress();
+    });
 
-  // Handle speed change
-  const handleSpeedChange = (rate) => {
-    setPlaybackRate(rate);
-    if (videoRef.current) {
-      videoRef.current.playbackRate = rate;
-    }
-    setShowSpeedMenu(false);
-  };
+    // Update progress every 5 seconds while playing
+    progressInterval.current = setInterval(() => {
+      if (player && !player.paused()) {
+        updateProgress();
+      }
+    }, 5000);
 
-  // Toggle CC (subtitles)
-  const handleToggleCC = () => {
-    const video = videoRef.current;
-    if (!video || !video.textTracks || video.textTracks.length === 0) {
-      alert('No subtitles available for this video');
-      return;
-    }
-
-    // Toggle first text track
-    const track = video.textTracks[0];
-    if (track.mode === 'showing') {
-      track.mode = 'hidden';
-    } else {
-      track.mode = 'showing';
-    }
-  };
+    // Cleanup
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+      if (player && !player.isDisposed()) {
+        player.dispose();
+      }
+    };
+  }, [videoUrl, currentFile, lesson, updateProgress]);
 
   const handleFileSelect = (file) => {
     // Save progress of current video before switching
-    if (currentFile && currentFile.is_video && videoRef.current) {
+    if (currentFile && currentFile.is_video && playerRef.current) {
       updateProgress();
     }
     setCurrentFile(file);
-  };
-
-  const handleVideoEnd = () => {
-    updateProgress();
-    // Auto-play next video if available
-    const currentIndex = lesson.files.findIndex(f => f.id === currentFile.id);
-    if (currentIndex < lesson.files.length - 1) {
-      const nextFile = lesson.files[currentIndex + 1];
-      if (nextFile.is_video) {
-        setTimeout(() => setCurrentFile(nextFile), 1000);
-      }
-    }
   };
 
   if (loading) {
@@ -272,56 +302,14 @@ function LessonPlayerEnhanced() {
         <div className="main-content">
           <div className="video-container">
             {currentFile && currentFile.is_video && videoUrl ? (
-            <div className="video-wrapper">
-              <video
-                key={currentFile?.id}
-                ref={videoRef}
-                controls
-                className="video-player"
-                src={videoUrl}
-                onEnded={handleVideoEnd}
-                onPause={updateProgress}
-                onCanPlay={handleVideoCanPlay}
-                preload="metadata"
-              />
-
-              {/* Custom Controls Overlay */}
-              <div className="custom-controls">
-                {/* Speed Control */}
-                <div className="control-group">
-                  <button
-                    className="control-btn"
-                    onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                    title="Playback Speed"
-                  >
-                    <span className="speed-label">{playbackRate}x</span>
-                  </button>
-
-                  {showSpeedMenu && (
-                    <div className="speed-menu">
-                      {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(rate => (
-                        <button
-                          key={rate}
-                          className={`speed-option ${playbackRate === rate ? 'active' : ''}`}
-                          onClick={() => handleSpeedChange(rate)}
-                        >
-                          {rate}x
-                        </button>
-                      ))}
-                    </div>
-                  )}
+              <div className="video-wrapper">
+                <div data-vjs-player>
+                  <video
+                    ref={videoRef}
+                    className="video-js vjs-theme-city vjs-big-play-centered"
+                  />
                 </div>
-
-                {/* CC Toggle */}
-                <button
-                  className="control-btn cc-btn"
-                  onClick={handleToggleCC}
-                  title="Closed Captions"
-                >
-                  CC
-                </button>
               </div>
-            </div>
             ) : currentFile && currentFile.is_video ? (
               <div className="no-video">
                 <p>Loading video...</p>
@@ -425,3 +413,5 @@ function LessonPlayerEnhanced() {
 }
 
 export default LessonPlayerEnhanced;
+
+// Made with Bob
