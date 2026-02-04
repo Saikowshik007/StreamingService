@@ -10,6 +10,7 @@ function LessonPlayerEnhanced() {
   const { lessonId } = useParams();
   const [lesson, setLesson] = useState(null);
   const [currentFile, setCurrentFile] = useState(null);
+  const [playerReady, setPlayerReady] = useState(false);
   const videoRef = useRef(null);
   const playerRef = useRef(null);
 
@@ -30,71 +31,96 @@ function LessonPlayerEnhanced() {
   useLayoutEffect(() => {
     if (!videoRef.current || playerRef.current) return;
 
+    console.log('Initializing video.js player...');
+
     const player = videojs(videoRef.current, {
       controls: true,
       fluid: true,
-      playbackRates: [0.5, 1, 1.5, 2]
+      playbackRates: [0.5, 1, 1.5, 2],
+      preload: 'auto',
+      html5: {
+        vhs: {
+          overrideNative: true
+        }
+      }
     });
 
-    playerRef.current = player;
+    // Wait for player to be ready
+    player.ready(() => {
+      console.log('Video.js player is ready');
+      playerRef.current = player;
+      setPlayerReady(true);
+    });
 
     return () => {
       if (playerRef.current) {
+        console.log('Disposing video.js player');
         playerRef.current.dispose();
         playerRef.current = null;
+        setPlayerReady(false);
       }
     };
   }, []);
 
   // Load video URL when file changes and update player
   useEffect(() => {
-    if (!currentFile?.is_video) return;
+    if (!currentFile?.is_video) {
+      console.log('No video file to load');
+      return;
+    }
 
-    // Wait for player to be ready
-    const loadVideo = () => {
-      if (!playerRef.current) {
-        // Player not ready yet, wait a bit
-        setTimeout(loadVideo, 100);
-        return;
-      }
+    if (!playerReady || !playerRef.current) {
+      console.log('Player not ready yet, waiting...');
+      return;
+    }
 
-      authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`)
-        .then(r => {
-          if (!r.ok) {
-            throw new Error(`HTTP error! status: ${r.status}`);
-          }
-          return r.json();
-        })
-        .then(data => {
-          // The backend returns: { url: "/api/stream/123?signature=...&expires=..." }
-          // We need to construct the full URL
-          const streamUrl = `${API_URL}${data.url}`;
-          console.log('Loading video URL:', streamUrl);
+    console.log('Loading video for file:', currentFile.id, currentFile.filename);
 
-          playerRef.current.src({
-            src: streamUrl,
-            type: 'video/mp4'
-          });
+    const player = playerRef.current;
 
-          // Ready the player for playback
-          playerRef.current.ready(() => {
-            playerRef.current.load();
-          });
-        })
-        .catch(err => {
-          console.error('Error loading video:', err);
-          // Show error to user
-          if (playerRef.current) {
-            playerRef.current.error({
-              code: 4,
-              message: 'Failed to load video: ' + err.message
-            });
-          }
+    // Pause current playback
+    player.pause();
+
+    const signedUrlEndpoint = `${API_URL}/api/stream/signed-url/${currentFile.id}`;
+    console.log('Fetching signed URL from:', signedUrlEndpoint);
+
+    authenticatedFetch(signedUrlEndpoint)
+      .then(r => {
+        console.log('Response status:', r.status, r.statusText);
+        if (!r.ok) {
+          throw new Error(`HTTP error! status: ${r.status}`);
+        }
+        return r.json();
+      })
+      .then(data => {
+        console.log('Signed URL response:', data);
+
+        // Construct the full stream URL
+        const streamUrl = `${API_URL}${data.url}`;
+        console.log('Final stream URL:', streamUrl);
+
+        // Set the new source
+        player.src({
+          src: streamUrl,
+          type: 'video/mp4'
         });
-    };
 
-    loadVideo();
-  }, [currentFile]);
+        // Reset and load the new video
+        player.load();
+
+        console.log('Video source set and loaded');
+      })
+      .catch(err => {
+        console.error('Error loading video:', err);
+        console.error('Error details:', err.message);
+
+        // Show error in player
+        player.error({
+          code: 4,
+          message: 'Failed to load video: ' + err.message
+        });
+      });
+  }, [currentFile, playerReady]);
 
   if (!lesson) return <div>Loading...</div>;
 
