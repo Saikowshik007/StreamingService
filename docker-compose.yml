@@ -1,10 +1,45 @@
 services:
+  db:
+    image: postgres:15
+    container_name: streaming-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=streaming_user
+      - POSTGRES_PASSWORD=streaming_password
+      - POSTGRES_DB=streaming_service
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streaming_user -d streaming_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: streaming-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   learning-platform-backend:
     build: .
     container_name: learning-platform-backend
     restart: unless-stopped
-    networks:
-      - my-network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=production
@@ -14,15 +49,15 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      # Connect to existing jobtrak-postgres container
-      - DB_HOST=jobtrak-postgres
+      - DB_HOST=db
       - DB_PORT=5432
       - DB_NAME=streaming_service
-      - DB_USER=jobtrak_user
-      - DB_PASSWORD=jobtrak_secure_password_2024
+      - DB_USER=streaming_user
+      - DB_PASSWORD=streaming_password
     volumes:
-      - D:/CourseMedia:/media:ro
       - ./data:/app/data
+    ports:
+      - "5000:5000"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
       interval: 30s
@@ -30,7 +65,6 @@ services:
       start_period: 10s
       retries: 3
 
-networks:
-  my-network:
-    external: true
-    name: my-network
+volumes:
+  postgres_data:
+  redis_data:
