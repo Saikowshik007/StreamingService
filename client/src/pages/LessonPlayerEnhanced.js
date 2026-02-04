@@ -59,14 +59,37 @@ function LessonPlayerEnhanced() {
       }
 
       authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`)
-        .then(r => r.json())
+        .then(r => {
+          if (!r.ok) {
+            throw new Error(`HTTP error! status: ${r.status}`);
+          }
+          return r.json();
+        })
         .then(data => {
-          const url = `${API_URL}${data.url}`;
-          playerRef.current.src({ src: url, type: 'video/mp4' });
-          playerRef.current.load();
+          // The backend returns: { url: "/api/stream/123?signature=...&expires=..." }
+          // We need to construct the full URL
+          const streamUrl = `${API_URL}${data.url}`;
+          console.log('Loading video URL:', streamUrl);
+
+          playerRef.current.src({
+            src: streamUrl,
+            type: 'video/mp4'
+          });
+
+          // Ready the player for playback
+          playerRef.current.ready(() => {
+            playerRef.current.load();
+          });
         })
         .catch(err => {
           console.error('Error loading video:', err);
+          // Show error to user
+          if (playerRef.current) {
+            playerRef.current.error({
+              code: 4,
+              message: 'Failed to load video: ' + err.message
+            });
+          }
         });
     };
 
