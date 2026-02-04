@@ -113,12 +113,20 @@ function LessonPlayerEnhanced() {
   useEffect(() => {
     if (!videoUrl) return;
 
-    // Wait for React to render the video element
-    const timeout = setTimeout(() => {
+    // Wait for React to render the video element - use RAF to ensure DOM is ready
+    const rafId = requestAnimationFrame(() => {
       if (!videoRef.current) {
-        console.error('Video ref still not available after timeout');
+        console.error('Video ref still not available');
         return;
       }
+
+      // Check if element is actually in the DOM
+      if (!document.contains(videoRef.current)) {
+        console.error('Video element not in DOM yet');
+        return;
+      }
+
+      console.log('Initializing player with videoUrl:', videoUrl);
 
       // Dispose old player if exists
       if (playerRef.current) {
@@ -162,10 +170,10 @@ function LessonPlayerEnhanced() {
       player.on('ended', () => {
         updateProgress();
       });
-    }, 0);
+    });
 
     return () => {
-      clearTimeout(timeout);
+      cancelAnimationFrame(rafId);
       if (progressInterval.current) clearInterval(progressInterval.current);
       if (playerRef.current && !playerRef.current.isDisposed()) {
         playerRef.current.dispose();
