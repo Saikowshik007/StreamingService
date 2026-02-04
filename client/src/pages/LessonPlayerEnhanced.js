@@ -18,6 +18,12 @@ function LessonPlayerEnhanced() {
   const currentFileIdRef = useRef(null);
   const hasSetInitialTime = useRef(false);
   const savedProgressSeconds = useRef(0);
+  const currentFileRef = useRef(null);
+
+  // Keep ref in sync with state for cleanup
+  useEffect(() => {
+    currentFileRef.current = currentFile;
+  }, [currentFile]);
 
   const updateProgress = useCallback(async () => {
     if (!currentFile || !currentFile.is_video || !videoRef.current) return;
@@ -51,6 +57,32 @@ function LessonPlayerEnhanced() {
     }
   }, [currentFile]);
 
+  // Save progress using refs (for cleanup/unmount)
+  const saveProgressOnUnmount = useCallback(async () => {
+    const file = currentFileRef.current;
+    const video = videoRef.current;
+    if (!file || !file.is_video || !video || !video.duration) return;
+
+    const progress_seconds = Math.floor(video.currentTime);
+    const progress_percentage = (video.currentTime / video.duration) * 100;
+    const completed = video.currentTime >= video.duration - 2;
+
+    try {
+      await authenticatedFetch(`${API_URL}/api/progress`, {
+        method: 'POST',
+        body: JSON.stringify({
+          file_id: file.id,
+          progress_seconds,
+          progress_percentage,
+          completed
+        })
+      });
+      console.log(`Progress saved on unmount: ${progress_seconds}s`);
+    } catch (err) {
+      console.error('Failed to save progress on unmount:', err);
+    }
+  }, []);
+
   useEffect(() => {
     const fetchLesson = async () => {
       try {
@@ -65,12 +97,16 @@ function LessonPlayerEnhanced() {
     };
 
     fetchLesson();
+
     return () => {
+      // Save progress when component unmounts (navigating to another page)
+      saveProgressOnUnmount();
+
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
       }
     };
-  }, [lessonId]);
+  }, [lessonId, saveProgressOnUnmount]);
 
   useEffect(() => {
     if (lesson && lesson.files && lesson.files.length > 0 && !currentFile) {
