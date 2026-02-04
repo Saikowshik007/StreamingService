@@ -349,7 +349,8 @@ function LessonPlayerEnhanced() {
       }
       playerInitialized.current = false;
     };
-  }, []); // EMPTY ARRAY - run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty array is intentional - we only want to initialize once
 
   // Load video source when videoUrl changes
   useEffect(() => {
