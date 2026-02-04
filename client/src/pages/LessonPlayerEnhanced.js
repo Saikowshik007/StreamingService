@@ -24,8 +24,9 @@ function LessonPlayerEnhanced() {
   const hasSeekedToProgress = useRef(false);
   const lastProgressUpdate = useRef(0);
   const lessonRefreshInterval = useRef(null);
+  const playerInitialized = useRef(false); // Track if player has EVER been initialized
 
-  // Keep refs in sync with state for cleanup
+  // Keep refs in sync with state
   useEffect(() => {
     currentFileRef.current = currentFile;
   }, [currentFile]);
@@ -35,18 +36,14 @@ function LessonPlayerEnhanced() {
   }, [lesson]);
 
   // Function to refresh lesson data to get updated progress
-  // Only update if there are actual changes to avoid re-renders
   const refreshLessonProgress = useCallback(async () => {
     try {
       const response = await authenticatedFetch(`${API_URL}/api/lessons/${lessonId}`);
       const data = await response.json();
 
-      // Only update state if the data has actually changed
-      // This prevents unnecessary re-renders that blank the video
       setLesson(prevLesson => {
         if (!prevLesson) return data;
 
-        // Check if any progress values have changed
         const hasChanges = data.files?.some((newFile, idx) => {
           const oldFile = prevLesson.files?.[idx];
           return !oldFile ||
@@ -55,7 +52,6 @@ function LessonPlayerEnhanced() {
                  newFile.completed !== oldFile.completed;
         });
 
-        // Only update if there are actual changes
         return hasChanges ? data : prevLesson;
       });
     } catch (err) {
@@ -76,7 +72,6 @@ function LessonPlayerEnhanced() {
 
     const progress_seconds = Math.floor(currentTime);
 
-    // Don't update if progress hasn't changed significantly (at least 1 second)
     if (Math.abs(progress_seconds - lastProgressUpdate.current) < 1) {
       return;
     }
@@ -85,8 +80,6 @@ function LessonPlayerEnhanced() {
     const progress_percentage = (currentTime / duration) * 100;
     const completed = currentTime >= duration - 2;
 
-    // Fire and forget - don't block playback
-    // REMOVED the refreshLessonProgress() call that was causing re-renders
     authenticatedFetch(`${API_URL}/api/progress`, {
       method: 'POST',
       body: JSON.stringify({
@@ -98,9 +91,8 @@ function LessonPlayerEnhanced() {
     }).catch(err => {
       console.error('Failed to update progress:', err);
     });
-  }, []); // Removed refreshLessonProgress dependency
+  }, []);
 
-  // Save progress using refs (for cleanup/unmount)
   const saveProgressOnUnmount = useCallback(async () => {
     const file = currentFileRef.current;
     const player = playerRef.current;
@@ -146,14 +138,11 @@ function LessonPlayerEnhanced() {
 
     fetchLesson();
 
-    // Refresh lesson progress every 30 seconds (increased from 15)
-    // This updates the sidebar progress without disrupting the video
     lessonRefreshInterval.current = setInterval(() => {
       refreshLessonProgress();
     }, 30000);
 
     return () => {
-      // Save progress when component unmounts
       saveProgressOnUnmount();
 
       if (progressInterval.current) {
@@ -168,7 +157,6 @@ function LessonPlayerEnhanced() {
 
   useEffect(() => {
     if (lesson && lesson.files && lesson.files.length > 0 && !currentFile) {
-      // Find first incomplete video or just the first video
       const firstIncomplete = lesson.files.find(f => f.is_video && !f.completed);
       const firstVideo = lesson.files.find(f => f.is_video);
       setCurrentFile(firstIncomplete || firstVideo || lesson.files[0]);
@@ -184,7 +172,6 @@ function LessonPlayerEnhanced() {
         return;
       }
 
-      // Only fetch new URL if the file ID has actually changed
       if (currentFileIdRef.current === currentFile.id) {
         return;
       }
@@ -195,7 +182,6 @@ function LessonPlayerEnhanced() {
       lastProgressUpdate.current = 0;
 
       try {
-        // Fetch both signed URL and latest progress in parallel
         const [urlResponse, progressResponse] = await Promise.all([
           authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`),
           authenticatedFetch(`${API_URL}/api/progress/file/${currentFile.id}`)
@@ -204,12 +190,9 @@ function LessonPlayerEnhanced() {
         const urlData = await urlResponse.json();
         const progressData = await progressResponse.json();
 
-        // Store progress in ref for immediate access
         savedProgressSeconds.current = progressData.progress_seconds || 0;
-
         console.log(`Loaded progress for file ${currentFile.id}: ${savedProgressSeconds.current}s`);
 
-        // Construct full URL with signature and expiration
         const signedUrl = `${API_URL}${urlData.url}`;
         setVideoUrl(signedUrl);
       } catch (err) {
@@ -221,23 +204,16 @@ function LessonPlayerEnhanced() {
     fetchVideoData();
   }, [currentFile]);
 
-  // Initialize Video.js player ONCE when video element is ready
+  // Initialize player ONCE and ONLY ONCE
   useEffect(() => {
-    // Wait for video element to be in the DOM
-    if (!videoRef.current) {
-      console.log('Video ref not ready yet');
+    // If player is already initialized, do nothing
+    if (playerInitialized.current || !videoRef.current) {
       return;
     }
 
-    // Only initialize if player doesn't exist
-    if (playerRef.current) {
-      console.log('Player already exists');
-      return;
-    }
+    console.log('Initializing Video.js player for the first time');
+    playerInitialized.current = true;
 
-    console.log('Initializing Video.js player...');
-
-    // Initialize new player
     const player = videojs(videoRef.current, {
       controls: true,
       responsive: true,
@@ -260,18 +236,17 @@ function LessonPlayerEnhanced() {
         ]
       },
       userActions: {
-        doubleClick: false // Disable default double-click fullscreen
+        doubleClick: false
       }
     });
 
     playerRef.current = player;
 
-    // Wait for player to be ready
     player.ready(() => {
       console.log('Video.js player is ready');
     });
 
-    // Double-tap to seek functionality
+    // Double-tap to seek
     let lastTapTime = 0;
     const doubleTapThreshold = 300;
 
@@ -279,7 +254,6 @@ function LessonPlayerEnhanced() {
       const currentTime = new Date().getTime();
       const tapTimeDiff = currentTime - lastTapTime;
 
-      // Get tap position
       const rect = player.el().getBoundingClientRect();
       const tapX = (e.clientX || e.changedTouches?.[0]?.clientX) - rect.left;
 
@@ -291,25 +265,22 @@ function LessonPlayerEnhanced() {
         const rightThird = videoWidth * 2 / 3;
 
         if (tapX < leftThird) {
-          // Left side - go back 10 seconds
           const newTime = Math.max(0, player.currentTime() - 10);
           player.currentTime(newTime);
           showSeekFeedback('backward');
         } else if (tapX > rightThird) {
-          // Right side - go forward 10 seconds
           const newTime = Math.min(player.duration(), player.currentTime() + 10);
           player.currentTime(newTime);
           showSeekFeedback('forward');
         }
 
-        lastTapTime = 0; // Reset to prevent triple tap
+        lastTapTime = 0;
       } else {
         lastTapTime = currentTime;
       }
     };
 
     const showSeekFeedback = (direction) => {
-      // Append to video-container for proper positioning
       const videoContainer = document.querySelector('.video-container');
       if (!videoContainer) return;
 
@@ -323,18 +294,14 @@ function LessonPlayerEnhanced() {
       }, 800);
     };
 
-    // Add touch and click listeners
     const videoElement = player.el();
     videoElement.addEventListener('touchend', handleDoubleTap);
     videoElement.addEventListener('click', handleDoubleTap);
 
-    // Handle video end
     player.on('ended', () => {
       updateProgress();
-      // Refresh lesson to show completion status
       setTimeout(() => refreshLessonProgress(), 500);
 
-      // Auto-play next video if available
       const file = currentFileRef.current;
       const currentLesson = lessonRef.current;
       if (currentLesson && currentLesson.files && file) {
@@ -348,14 +315,12 @@ function LessonPlayerEnhanced() {
       }
     });
 
-    // Handle pause to save progress (but not when seeking)
     player.on('pause', () => {
       if (!player.seeking()) {
         updateProgress();
       }
     });
 
-    // Update progress every 10 seconds while playing
     const startProgressTracking = () => {
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
@@ -365,17 +330,15 @@ function LessonPlayerEnhanced() {
         if (player && !player.paused() && !player.seeking() && !player.isDisposed()) {
           updateProgress();
         }
-      }, 10000); // 10 seconds
+      }, 10000);
     };
 
-    // Start tracking after video starts playing
     player.on('playing', () => {
       startProgressTracking();
     });
 
-    // Cleanup only on component unmount
     return () => {
-      console.log('Cleaning up player on unmount');
+      console.log('Disposing player on unmount');
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
         progressInterval.current = null;
@@ -384,46 +347,39 @@ function LessonPlayerEnhanced() {
         playerRef.current.dispose();
         playerRef.current = null;
       }
+      playerInitialized.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFile?.is_video]); // Only reinitialize if we go from no video to video
+  }, []); // EMPTY ARRAY - run only once on mount
 
-  // Separate effect to handle video source changes
+  // Load video source when videoUrl changes
   useEffect(() => {
     const player = playerRef.current;
     if (!player || !videoUrl || player.isDisposed()) {
-      console.log('Skipping video load - player not ready or no URL', {
+      console.log('Waiting for player and video URL...', {
         hasPlayer: !!player,
-        hasUrl: !!videoUrl,
-        isDisposed: player?.isDisposed()
+        hasUrl: !!videoUrl
       });
       return;
     }
 
-    console.log('Loading new video source:', videoUrl);
+    console.log('Loading video source:', videoUrl);
 
-    // Clear any existing interval
     if (progressInterval.current) {
       clearInterval(progressInterval.current);
       progressInterval.current = null;
     }
 
-    // Set new video source
     player.src({
       src: videoUrl,
       type: 'video/mp4'
     });
 
-    // Load the video
     player.load();
 
-    // Handle when video metadata is loaded
     const onLoadedMetadata = () => {
       const progressToSeek = savedProgressSeconds.current;
-
       console.log('Video metadata loaded, duration:', player.duration());
 
-      // Seek to saved position if it exists and we haven't seeked yet
       if (!hasSeekedToProgress.current && progressToSeek > 5) {
         console.log(`Seeking to saved position: ${progressToSeek}s`);
         player.currentTime(progressToSeek);
@@ -433,14 +389,12 @@ function LessonPlayerEnhanced() {
 
     player.one('loadedmetadata', onLoadedMetadata);
 
-    // Cleanup for this effect
     return () => {
       player.off('loadedmetadata', onLoadedMetadata);
     };
   }, [videoUrl]);
 
   const handleFileSelect = (file) => {
-    // Save progress of current video before switching
     if (currentFile && currentFile.is_video && playerRef.current) {
       updateProgress();
     }
