@@ -21,17 +21,18 @@ function LessonPlayerEnhanced() {
   const savedProgressSeconds = useRef(0);
   const currentFileRef = useRef(null);
   const hasSeekedToProgress = useRef(false);
+  const lastProgressUpdate = useRef(0);
 
   // Keep ref in sync with state for cleanup
   useEffect(() => {
     currentFileRef.current = currentFile;
   }, [currentFile]);
 
-  const updateProgress = useCallback(async () => {
-    if (!currentFile || !currentFile.is_video || !playerRef.current) return;
-
+  const updateProgress = useCallback(() => {
+    const file = currentFileRef.current;
     const player = playerRef.current;
-    if (player.isDisposed()) return;
+    
+    if (!file || !file.is_video || !player || player.isDisposed()) return;
     
     const currentTime = player.currentTime();
     const duration = player.duration();
@@ -39,39 +40,29 @@ function LessonPlayerEnhanced() {
     if (!duration || isNaN(duration) || duration === 0) return;
 
     const progress_seconds = Math.floor(currentTime);
-    const progress_percentage = (currentTime / duration) * 100;
-    const completed = currentTime >= duration - 2;
-
+    
     // Don't update if progress hasn't changed significantly (at least 1 second)
-    if (currentFile.progress_seconds && Math.abs(progress_seconds - currentFile.progress_seconds) < 1) {
+    if (Math.abs(progress_seconds - lastProgressUpdate.current) < 1) {
       return;
     }
 
-    try {
-      // Fire and forget - don't await to avoid blocking playback
-      authenticatedFetch(`${API_URL}/api/progress`, {
-        method: 'POST',
-        body: JSON.stringify({
-          file_id: currentFile.id,
-          progress_seconds,
-          progress_percentage,
-          completed
-        })
-      }).catch(err => {
-        console.error('Failed to update progress:', err);
-      });
+    lastProgressUpdate.current = progress_seconds;
+    const progress_percentage = (currentTime / duration) * 100;
+    const completed = currentTime >= duration - 2;
 
-      // Update local state without awaiting
-      setCurrentFile(prev => ({
-        ...prev,
+    // Fire and forget - don't block playback
+    authenticatedFetch(`${API_URL}/api/progress`, {
+      method: 'POST',
+      body: JSON.stringify({
+        file_id: file.id,
         progress_seconds,
         progress_percentage,
         completed
-      }));
-    } catch (err) {
+      })
+    }).catch(err => {
       console.error('Failed to update progress:', err);
-    }
-  }, [currentFile]);
+    });
+  }, []);
 
   // Save progress using refs (for cleanup/unmount)
   const saveProgressOnUnmount = useCallback(async () => {
