@@ -146,12 +146,6 @@ function LessonPlayerEnhanced() {
 
     fetchLesson();
 
-    // Refresh lesson progress every 30 seconds (increased from 15)
-    // This updates the sidebar progress without disrupting the video
-    lessonRefreshInterval.current = setInterval(() => {
-      refreshLessonProgress();
-    }, 30000);
-
     return () => {
       // Save progress when component unmounts
       saveProgressOnUnmount();
@@ -164,7 +158,7 @@ function LessonPlayerEnhanced() {
         clearInterval(lessonRefreshInterval.current);
       }
     };
-  }, [lessonId, saveProgressOnUnmount, refreshLessonProgress]);
+  }, [lessonId, saveProgressOnUnmount]);
 
   useEffect(() => {
     if (lesson && lesson.files && lesson.files.length > 0 && !currentFile) {
