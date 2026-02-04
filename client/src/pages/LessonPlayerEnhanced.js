@@ -271,16 +271,13 @@ function LessonPlayerEnhanced() {
       // Handle video end
       player.on('ended', () => {
         updateProgress();
-        // Refresh lesson to show completion status
-        setTimeout(() => refreshLessonProgress(), 500);
 
         // Auto-play next video if available
         const file = currentFileRef.current;
-        const currentLesson = lessonRef.current;
-        if (currentLesson && currentLesson.files && file) {
-          const currentIndex = currentLesson.files.findIndex(f => f.id === file.id);
-          if (currentIndex < currentLesson.files.length - 1) {
-            const nextFile = currentLesson.files[currentIndex + 1];
+        if (lesson && lesson.files && file) {
+          const currentIndex = lesson.files.findIndex(f => f.id === file.id);
+          if (currentIndex < lesson.files.length - 1) {
+            const nextFile = lesson.files[currentIndex + 1];
             if (nextFile.is_video) {
               setTimeout(() => setCurrentFile(nextFile), 1000);
             }
@@ -363,7 +360,7 @@ function LessonPlayerEnhanced() {
     return () => {
       player.off('loadedmetadata', onLoadedMetadata);
     };
-  }, [videoUrl, currentFile, lesson, updateProgress, refreshLessonProgress]);
+  }, [videoUrl, currentFile, lesson, updateProgress]);
 
   const handleFileSelect = (file) => {
     // Save progress of current video before switching
