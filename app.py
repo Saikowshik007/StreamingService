@@ -137,32 +137,79 @@ atexit.register(stop_progress_sync_worker)
 @api_bp.route('/api/courses', methods=['GET'])
 @require_auth
 def get_courses():
-    """Get all courses with progress (optimized - single query)"""
+    """Get all courses with progress (cached + optimized query)"""
     user_id = request.current_user['uid']
+    cache = get_cache()
+    cache_key = f'courses:all:{user_id}'
+
+    # Try cache first
+    if cache.enabled:
+        cached_courses = cache.get(cache_key)
+        if cached_courses is not None:
+            logger.debug(f"Cache HIT for courses list (user: {user_id})")
+            return jsonify(cached_courses)
+
+    # Cache miss - fetch from database
     courses = db.get_all_courses_with_progress(user_id)
+
+    # Cache for 5 minutes
+    if cache.enabled and courses:
+        cache.set(cache_key, courses, ttl=300)
+        logger.debug(f"Cached courses list for user {user_id}")
+
     return jsonify(courses)
 
 @api_bp.route('/api/courses/<course_id>', methods=['GET'])
 @require_auth
 def get_course(course_id):
-    """Get a specific course with lessons and files (optimized - 4 queries instead of N*M)"""
+    """Get a specific course with lessons and files (cached + optimized)"""
     user_id = request.current_user['uid']
+    cache = get_cache()
+    cache_key = f'course:{course_id}:{user_id}'
 
+    # Try cache first
+    if cache.enabled:
+        cached_course = cache.get(cache_key)
+        if cached_course is not None:
+            logger.debug(f"Cache HIT for course {course_id}")
+            return jsonify(cached_course)
+
+    # Cache miss - fetch from database
     course = db.get_course_with_details(course_id, user_id)
     if not course:
         return jsonify({'error': 'Course not found'}), 404
+
+    # Cache for 5 minutes
+    if cache.enabled:
+        cache.set(cache_key, course, ttl=300)
+        logger.debug(f"Cached course {course_id} for user {user_id}")
 
     return jsonify(course)
 
 @api_bp.route('/api/lessons/<lesson_id>', methods=['GET'])
 @require_auth
 def get_lesson(lesson_id):
-    """Get a specific lesson with files (optimized - 3 queries instead of N+1)"""
+    """Get a specific lesson with files (cached + optimized)"""
     user_id = request.current_user['uid']
+    cache = get_cache()
+    cache_key = f'lesson:{lesson_id}:{user_id}'
 
+    # Try cache first
+    if cache.enabled:
+        cached_lesson = cache.get(cache_key)
+        if cached_lesson is not None:
+            logger.debug(f"Cache HIT for lesson {lesson_id}")
+            return jsonify(cached_lesson)
+
+    # Cache miss - fetch from database
     lesson = db.get_lesson_with_files_and_progress(lesson_id, user_id)
     if not lesson:
         return jsonify({'error': 'Lesson not found'}), 404
+
+    # Cache for 5 minutes
+    if cache.enabled:
+        cache.set(cache_key, lesson, ttl=300)
+        logger.debug(f"Cached lesson {lesson_id} for user {user_id}")
 
     return jsonify(lesson)
 
@@ -378,6 +425,14 @@ def update_progress_endpoint():
         # Mark this progress as dirty (needs Firebase sync)
         dirty_key = f"progress:dirty:{user_id}:{file_id}"
         cache.set(dirty_key, True, ttl=86400)
+
+        # Invalidate course/lesson caches when video is completed
+        # (to update progress bars in course list)
+        if completed:
+            cache.delete(f'courses:all:{user_id}')
+            cache.delete(f'course:{course_id}:{user_id}')
+            cache.delete(f'lesson:{lesson_id}:{user_id}')
+            logger.debug(f"Invalidated caches for completed video {file_id}")
     else:
         # If Redis is unavailable, fall back to direct Firebase write
         db.update_user_progress(
