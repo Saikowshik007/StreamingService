@@ -201,13 +201,12 @@ function LessonPlayerEnhanced() {
       <div className="player-layout">
         <div className="main-content">
           <div className="video-container">
-            {currentFile && currentFile.is_video ? (
-              <div className="video-wrapper">
-                <div data-vjs-player>
-                  <video ref={videoRef} className="video-js vjs-theme-city vjs-big-play-centered" />
-                </div>
+            <div className="video-wrapper" style={{ display: currentFile && currentFile.is_video ? 'block' : 'none' }}>
+              <div data-vjs-player>
+                <video ref={videoRef} className="video-js vjs-theme-city vjs-big-play-centered" />
               </div>
-            ) : (
+            </div>
+            {(!currentFile || !currentFile.is_video) && (
               <div className="no-video"><p>Select a video to start watching</p></div>
             )}
           </div>
