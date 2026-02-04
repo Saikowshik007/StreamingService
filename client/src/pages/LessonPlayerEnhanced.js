@@ -263,7 +263,6 @@ function LessonPlayerEnhanced() {
 
     // Double-tap to seek functionality
     let lastTapTime = 0;
-    let lastTapX = 0;
     const doubleTapThreshold = 300;
 
     const handleDoubleTap = (e) => {
@@ -296,7 +295,6 @@ function LessonPlayerEnhanced() {
         lastTapTime = 0; // Reset to prevent triple tap
       } else {
         lastTapTime = currentTime;
-        lastTapX = tapX;
       }
     };
 
