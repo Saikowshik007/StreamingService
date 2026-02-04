@@ -216,15 +216,160 @@ function LessonPlayerEnhanced() {
     fetchVideoData();
   }, [currentFile]);
 
-  // Initialize Video.js player
+  // Initialize Video.js player ONCE
   useEffect(() => {
-    if (!videoRef.current || !videoUrl) return;
+    if (!videoRef.current) return;
 
-    // Dispose existing player
-    if (playerRef.current) {
-      playerRef.current.dispose();
-      playerRef.current = null;
+    // Only initialize if player doesn't exist
+    if (!playerRef.current) {
+      // Initialize new player
+      const player = videojs(videoRef.current, {
+        controls: true,
+        responsive: true,
+        fluid: true,
+        playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+        controlBar: {
+          children: [
+            'playToggle',
+            'volumePanel',
+            'currentTimeDisplay',
+            'timeDivider',
+            'durationDisplay',
+            'progressControl',
+            'remainingTimeDisplay',
+            'playbackRateMenuButton',
+            'chaptersButton',
+            'subtitlesButton',
+            'captionsButton',
+            'fullscreenToggle'
+          ]
+        },
+        userActions: {
+          doubleClick: false // Disable default double-click fullscreen
+        }
+      });
+
+      playerRef.current = player;
+
+      // Double-tap to seek functionality
+      let lastTapTime = 0;
+      const doubleTapThreshold = 300;
+
+      const handleDoubleTap = (e) => {
+        const currentTime = new Date().getTime();
+        const tapTimeDiff = currentTime - lastTapTime;
+
+        // Get tap position
+        const rect = player.el().getBoundingClientRect();
+        const tapX = (e.clientX || e.changedTouches?.[0]?.clientX) - rect.left;
+
+        if (tapTimeDiff < doubleTapThreshold && tapTimeDiff > 0) {
+          e.preventDefault();
+
+          const videoWidth = rect.width;
+          const leftThird = videoWidth / 3;
+          const rightThird = videoWidth * 2 / 3;
+
+          if (tapX < leftThird) {
+            // Left side - go back 10 seconds
+            const newTime = Math.max(0, player.currentTime() - 10);
+            player.currentTime(newTime);
+            showSeekFeedback('backward');
+          } else if (tapX > rightThird) {
+            // Right side - go forward 10 seconds
+            const newTime = Math.min(player.duration(), player.currentTime() + 10);
+            player.currentTime(newTime);
+            showSeekFeedback('forward');
+          }
+
+          lastTapTime = 0; // Reset to prevent triple tap
+        } else {
+          lastTapTime = currentTime;
+        }
+      };
+
+      const showSeekFeedback = (direction) => {
+        // Append to video-container for proper positioning
+        const videoContainer = document.querySelector('.video-container');
+        if (!videoContainer) return;
+
+        const feedback = document.createElement('div');
+        feedback.className = `seek-feedback seek-${direction}`;
+        feedback.innerHTML = direction === 'backward' ? '⏪ 10s' : '10s ⏩';
+        videoContainer.appendChild(feedback);
+
+        setTimeout(() => {
+          feedback.remove();
+        }, 800);
+      };
+
+      // Add touch and click listeners
+      const videoElement = player.el();
+      videoElement.addEventListener('touchend', handleDoubleTap);
+      videoElement.addEventListener('click', handleDoubleTap);
+
+      // Handle video end
+      player.on('ended', () => {
+        updateProgress();
+        // Refresh lesson to show completion status
+        setTimeout(() => refreshLessonProgress(), 500);
+
+        // Auto-play next video if available
+        const file = currentFileRef.current;
+        if (lesson && lesson.files && file) {
+          const currentIndex = lesson.files.findIndex(f => f.id === file.id);
+          if (currentIndex < lesson.files.length - 1) {
+            const nextFile = lesson.files[currentIndex + 1];
+            if (nextFile.is_video) {
+              setTimeout(() => setCurrentFile(nextFile), 1000);
+            }
+          }
+        }
+      });
+
+      // Handle pause to save progress (but not when seeking)
+      player.on('pause', () => {
+        if (!player.seeking()) {
+          updateProgress();
+        }
+      });
+
+      // Update progress every 10 seconds while playing
+      const startProgressTracking = () => {
+        if (progressInterval.current) {
+          clearInterval(progressInterval.current);
+        }
+
+        progressInterval.current = setInterval(() => {
+          if (player && !player.paused() && !player.seeking() && !player.isDisposed()) {
+            updateProgress();
+          }
+        }, 10000); // 10 seconds
+      };
+
+      // Start tracking after video starts playing
+      player.on('playing', () => {
+        startProgressTracking();
+      });
     }
+
+    // Cleanup only on component unmount
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+        progressInterval.current = null;
+      }
+      if (playerRef.current && !playerRef.current.isDisposed()) {
+        playerRef.current.dispose();
+        playerRef.current = null;
+      }
+    };
+  }, []); // Empty dependency array - only run once on mount
+
+  // Separate effect to handle video source changes
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !videoUrl || player.isDisposed()) return;
 
     // Clear any existing interval
     if (progressInterval.current) {
@@ -232,100 +377,14 @@ function LessonPlayerEnhanced() {
       progressInterval.current = null;
     }
 
-    // Initialize new player
-    const player = videojs(videoRef.current, {
-      controls: true,
-      responsive: true,
-      fluid: true,
-      playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
-      controlBar: {
-        children: [
-          'playToggle',
-          'volumePanel',
-          'currentTimeDisplay',
-          'timeDivider',
-          'durationDisplay',
-          'progressControl',
-          'remainingTimeDisplay',
-          'playbackRateMenuButton',
-          'chaptersButton',
-          'subtitlesButton',
-          'captionsButton',
-          'fullscreenToggle'
-        ]
-      },
-      userActions: {
-        doubleClick: false // Disable default double-click fullscreen
-      }
-    });
-
-    playerRef.current = player;
-
-    // Double-tap to seek functionality
-    let lastTapTime = 0;
-    const doubleTapThreshold = 300;
-
-    const handleDoubleTap = (e) => {
-      const currentTime = new Date().getTime();
-      const tapTimeDiff = currentTime - lastTapTime;
-
-      // Get tap position
-      const rect = player.el().getBoundingClientRect();
-      const tapX = (e.clientX || e.changedTouches?.[0]?.clientX) - rect.left;
-
-      if (tapTimeDiff < doubleTapThreshold && tapTimeDiff > 0) {
-        e.preventDefault();
-
-        const videoWidth = rect.width;
-        const leftThird = videoWidth / 3;
-        const rightThird = videoWidth * 2 / 3;
-
-        if (tapX < leftThird) {
-          // Left side - go back 10 seconds
-          const newTime = Math.max(0, player.currentTime() - 10);
-          player.currentTime(newTime);
-          showSeekFeedback('backward');
-        } else if (tapX > rightThird) {
-          // Right side - go forward 10 seconds
-          const newTime = Math.min(player.duration(), player.currentTime() + 10);
-          player.currentTime(newTime);
-          showSeekFeedback('forward');
-        }
-
-        lastTapTime = 0; // Reset to prevent triple tap
-      } else {
-        lastTapTime = currentTime;
-      }
-    };
-
-    const showSeekFeedback = (direction) => {
-      // Append to video-container for proper positioning
-      const videoContainer = document.querySelector('.video-container');
-      if (!videoContainer) return;
-
-      const feedback = document.createElement('div');
-      feedback.className = `seek-feedback seek-${direction}`;
-      feedback.innerHTML = direction === 'backward' ? '⏪ 10s' : '10s ⏩';
-      videoContainer.appendChild(feedback);
-
-      setTimeout(() => {
-        feedback.remove();
-      }, 800);
-    };
-
-    // Add touch and click listeners
-    const videoElement = player.el();
-    videoElement.addEventListener('touchend', handleDoubleTap);
-    videoElement.addEventListener('click', handleDoubleTap);
-
-    // Set video source
+    // Set new video source
     player.src({
       src: videoUrl,
       type: 'video/mp4'
     });
 
     // Handle when video metadata is loaded
-    player.on('loadedmetadata', () => {
+    const onLoadedMetadata = () => {
       const progressToSeek = savedProgressSeconds.current;
 
       // Seek to saved position if it exists and we haven't seeked yet
@@ -334,61 +393,13 @@ function LessonPlayerEnhanced() {
         player.currentTime(progressToSeek);
         hasSeekedToProgress.current = true;
       }
-    });
-
-    // Handle video end
-    player.on('ended', () => {
-      updateProgress();
-      // Refresh lesson to show completion status
-      setTimeout(() => refreshLessonProgress(), 500);
-
-      // Auto-play next video if available
-      const file = currentFileRef.current;
-      if (lesson && lesson.files && file) {
-        const currentIndex = lesson.files.findIndex(f => f.id === file.id);
-        if (currentIndex < lesson.files.length - 1) {
-          const nextFile = lesson.files[currentIndex + 1];
-          if (nextFile.is_video) {
-            setTimeout(() => setCurrentFile(nextFile), 1000);
-          }
-        }
-      }
-    });
-
-    // Handle pause to save progress (but not when seeking)
-    player.on('pause', () => {
-      if (!player.seeking()) {
-        updateProgress();
-      }
-    });
-
-    // Update progress every 10 seconds while playing
-    const startProgressTracking = () => {
-      if (progressInterval.current) {
-        clearInterval(progressInterval.current);
-      }
-
-      progressInterval.current = setInterval(() => {
-        if (player && !player.paused() && !player.seeking() && !player.isDisposed()) {
-          updateProgress();
-        }
-      }, 10000); // 10 seconds
     };
 
-    // Start tracking after video starts playing
-    player.on('playing', () => {
-      startProgressTracking();
-    });
+    player.one('loadedmetadata', onLoadedMetadata);
 
-    // Cleanup
+    // Cleanup for this effect
     return () => {
-      if (progressInterval.current) {
-        clearInterval(progressInterval.current);
-        progressInterval.current = null;
-      }
-      if (player && !player.isDisposed()) {
-        player.dispose();
-      }
+      player.off('loadedmetadata', onLoadedMetadata);
     };
   }, [videoUrl, currentFile, lesson, updateProgress, refreshLessonProgress]);
 
