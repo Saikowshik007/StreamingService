@@ -146,6 +146,7 @@ function LessonPlayerEnhanced() {
       currentFileIdRef.current = currentFile.id;
       hasSeekedToProgress.current = false;
       savedProgressSeconds.current = 0;
+      lastProgressUpdate.current = 0;
 
       try {
         // Fetch both signed URL and latest progress in parallel
@@ -162,14 +163,6 @@ function LessonPlayerEnhanced() {
 
         console.log(`Loaded progress for file ${currentFile.id}: ${savedProgressSeconds.current}s`);
 
-        // Update current file with latest progress from Redis/Firebase
-        setCurrentFile(prev => ({
-          ...prev,
-          progress_seconds: progressData.progress_seconds || 0,
-          progress_percentage: progressData.progress_percentage || 0,
-          completed: progressData.completed || false
-        }));
-
         // Construct full URL with signature and expiration
         const signedUrl = `${API_URL}${urlData.url}`;
         setVideoUrl(signedUrl);
@@ -180,7 +173,7 @@ function LessonPlayerEnhanced() {
     };
 
     fetchVideoData();
-  }, [currentFile]);
+  }, [currentFile?.id]); // Only depend on the ID, not the entire object
 
   // Initialize Video.js player
   useEffect(() => {
