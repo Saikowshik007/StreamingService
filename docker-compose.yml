@@ -23,6 +23,7 @@ services:
       - DB_PASSWORD=postgres
     volumes:
       - ./data:/app/data
+      - /media/sai/Untitled/CourseMedia:/media:ro
     ports:
       - "5000:5000"
     networks:
