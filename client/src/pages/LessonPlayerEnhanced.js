@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
@@ -36,8 +36,8 @@ function LessonPlayerEnhanced() {
       .then(data => setVideoUrl(`${API_URL}${data.url}`));
   }, [currentFile]);
 
-  // Initialize player when URL changes
-  useEffect(() => {
+  // Initialize player when URL changes - use LayoutEffect to ensure DOM is ready
+  useLayoutEffect(() => {
     if (!videoUrl || !videoRef.current) return;
 
     if (playerRef.current) {
