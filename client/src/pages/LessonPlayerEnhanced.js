@@ -219,10 +219,67 @@ function LessonPlayerEnhanced() {
           'captionsButton',
           'fullscreenToggle'
         ]
+      },
+      userActions: {
+        doubleClick: false // Disable default double-click fullscreen
       }
     });
 
     playerRef.current = player;
+
+    // Add double-tap seek functionality
+    let lastTapTime = 0;
+    let lastTapX = 0;
+    const doubleTapThreshold = 300; // ms
+
+    const handleDoubleTap = (e) => {
+      const currentTime = Date.now();
+      const tapX = e.touches ? e.touches[0].clientX : e.clientX;
+      
+      if (currentTime - lastTapTime < doubleTapThreshold && Math.abs(tapX - lastTapX) < 50) {
+        // Double tap detected
+        const videoElement = player.el();
+        const rect = videoElement.getBoundingClientRect();
+        const clickX = e.touches ? e.touches[0].clientX : e.clientX;
+        const relativeX = clickX - rect.left;
+        const videoWidth = rect.width;
+        
+        // Determine if tap was on left or right side
+        if (relativeX < videoWidth / 2) {
+          // Left side - go back 10 seconds
+          const newTime = Math.max(0, player.currentTime() - 10);
+          player.currentTime(newTime);
+          showSeekFeedback('backward');
+        } else {
+          // Right side - go forward 10 seconds
+          const newTime = Math.min(player.duration(), player.currentTime() + 10);
+          player.currentTime(newTime);
+          showSeekFeedback('forward');
+        }
+        
+        lastTapTime = 0; // Reset to prevent triple tap
+      } else {
+        lastTapTime = currentTime;
+        lastTapX = tapX;
+      }
+    };
+
+    const showSeekFeedback = (direction) => {
+      const videoElement = player.el();
+      const feedback = document.createElement('div');
+      feedback.className = `seek-feedback seek-${direction}`;
+      feedback.innerHTML = direction === 'backward' ? '⏪ 10s' : '10s ⏩';
+      videoElement.appendChild(feedback);
+      
+      setTimeout(() => {
+        feedback.remove();
+      }, 800);
+    };
+
+    // Add touch and click listeners
+    const videoElement = player.el();
+    videoElement.addEventListener('touchend', handleDoubleTap);
+    videoElement.addEventListener('click', handleDoubleTap);
 
     // Set video source
     player.src({
