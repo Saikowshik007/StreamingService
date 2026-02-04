@@ -22,11 +22,23 @@ function LessonPlayerEnhanced() {
   const currentFileRef = useRef(null);
   const hasSeekedToProgress = useRef(false);
   const lastProgressUpdate = useRef(0);
+  const lessonRefreshInterval = useRef(null);
 
   // Keep ref in sync with state for cleanup
   useEffect(() => {
     currentFileRef.current = currentFile;
   }, [currentFile]);
+
+  // Function to refresh lesson data to get updated progress
+  const refreshLessonProgress = useCallback(async () => {
+    try {
+      const response = await authenticatedFetch(`${API_URL}/api/lessons/${lessonId}`);
+      const data = await response.json();
+      setLesson(data);
+    } catch (err) {
+      console.error('Failed to refresh lesson progress:', err);
+    }
+  }, [lessonId]);
 
   const updateProgress = useCallback(() => {
     const file = currentFileRef.current;
@@ -59,10 +71,13 @@ function LessonPlayerEnhanced() {
         progress_percentage,
         completed
       })
+    }).then(() => {
+      // Refresh lesson data to update sidebar progress
+      refreshLessonProgress();
     }).catch(err => {
       console.error('Failed to update progress:', err);
     });
-  }, []);
+  }, [refreshLessonProgress]);
 
   // Save progress using refs (for cleanup/unmount)
   const saveProgressOnUnmount = useCallback(async () => {
@@ -110,6 +125,11 @@ function LessonPlayerEnhanced() {
 
     fetchLesson();
 
+    // Refresh lesson progress every 15 seconds to update sidebar
+    lessonRefreshInterval.current = setInterval(() => {
+      refreshLessonProgress();
+    }, 15000);
+
     return () => {
       // Save progress when component unmounts
       saveProgressOnUnmount();
@@ -117,8 +137,12 @@ function LessonPlayerEnhanced() {
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
       }
+
+      if (lessonRefreshInterval.current) {
+        clearInterval(lessonRefreshInterval.current);
+      }
     };
-  }, [lessonId, saveProgressOnUnmount]);
+  }, [lessonId, saveProgressOnUnmount, refreshLessonProgress]);
 
   useEffect(() => {
     if (lesson && lesson.files && lesson.files.length > 0 && !currentFile) {
