@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
@@ -10,262 +10,92 @@ function LessonPlayerEnhanced() {
   const { lessonId } = useParams();
   const [lesson, setLesson] = useState(null);
   const [currentFile, setCurrentFile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
-  
   const videoRef = useRef(null);
   const playerRef = useRef(null);
-  const progressInterval = useRef(null);
-  const currentFileIdRef = useRef(null);
-  const savedProgressSeconds = useRef(0);
-  const hasSeekedToProgress = useRef(false);
-  const lastProgressUpdate = useRef(0);
 
-  const updateProgress = useCallback(() => {
-    const player = playerRef.current;
-    if (!currentFile || !currentFile.is_video || !player || player.isDisposed()) return;
-
-    const currentTime = player.currentTime();
-    const duration = player.duration();
-    if (!duration || isNaN(duration) || duration === 0) return;
-
-    const progress_seconds = Math.floor(currentTime);
-    if (Math.abs(progress_seconds - lastProgressUpdate.current) < 1) return;
-
-    lastProgressUpdate.current = progress_seconds;
-    const progress_percentage = (currentTime / duration) * 100;
-    const completed = currentTime >= duration - 2;
-
-    authenticatedFetch(`${API_URL}/api/progress`, {
-      method: 'POST',
-      body: JSON.stringify({
-        file_id: currentFile.id,
-        progress_seconds,
-        progress_percentage,
-        completed
-      })
-    }).catch(err => console.error('Progress update failed:', err));
-  }, [currentFile]);
-
-  // Fetch lesson
+  // Load lesson
   useEffect(() => {
-    const fetchLesson = async () => {
-      try {
-        const response = await authenticatedFetch(`${API_URL}/api/lessons/${lessonId}`);
-        const data = await response.json();
+    authenticatedFetch(`${API_URL}/api/lessons/${lessonId}`)
+      .then(r => r.json())
+      .then(data => {
         setLesson(data);
-        setLoading(false);
-      } catch (err) {
-        setError('Failed to load lesson.');
-        setLoading(false);
-      }
-    };
-    fetchLesson();
+        if (data.files) {
+          const firstVideo = data.files.find(f => f.is_video);
+          if (firstVideo) setCurrentFile(firstVideo);
+        }
+      });
   }, [lessonId]);
 
-  // Set initial file
+  // Load video URL when file changes
   useEffect(() => {
-    if (lesson && lesson.files && lesson.files.length > 0 && !currentFile) {
-      const firstIncomplete = lesson.files.find(f => f.is_video && !f.completed);
-      const firstVideo = lesson.files.find(f => f.is_video);
-      setCurrentFile(firstIncomplete || firstVideo || lesson.files[0]);
-    }
-  }, [lesson, currentFile]);
+    if (!currentFile?.is_video) return;
 
-  // Fetch video URL when file changes
-  useEffect(() => {
-    const fetchVideoData = async () => {
-      if (!currentFile || !currentFile.is_video) {
-        setVideoUrl(null);
-        currentFileIdRef.current = null;
-        return;
-      }
-
-      if (currentFileIdRef.current === currentFile.id) return;
-
-      currentFileIdRef.current = currentFile.id;
-      hasSeekedToProgress.current = false;
-      savedProgressSeconds.current = 0;
-      lastProgressUpdate.current = 0;
-
-      try {
-        const [urlResponse, progressResponse] = await Promise.all([
-          authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`),
-          authenticatedFetch(`${API_URL}/api/progress/file/${currentFile.id}`)
-        ]);
-
-        const urlData = await urlResponse.json();
-        const progressData = await progressResponse.json();
-        savedProgressSeconds.current = progressData.progress_seconds || 0;
-
-        const signedUrl = `${API_URL}${urlData.url}`;
-        setVideoUrl(signedUrl);
-      } catch (err) {
-        console.error('Failed to fetch video data:', err);
-      }
-    };
-
-    fetchVideoData();
+    authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`)
+      .then(r => r.json())
+      .then(data => setVideoUrl(`${API_URL}${data.url}`));
   }, [currentFile]);
 
-  // Initialize and manage Video.js player
+  // Initialize player when URL changes
   useEffect(() => {
-    if (!videoUrl) return;
+    if (!videoUrl || !videoRef.current) return;
 
-    // Wait for React to render the video element - use RAF to ensure DOM is ready
-    const rafId = requestAnimationFrame(() => {
-      if (!videoRef.current) {
-        console.error('Video ref still not available');
-        return;
-      }
+    if (playerRef.current) {
+      playerRef.current.dispose();
+    }
 
-      // Check if element is actually in the DOM
-      if (!document.contains(videoRef.current)) {
-        console.error('Video element not in DOM yet');
-        return;
-      }
+    const player = videojs(videoRef.current, {
+      controls: true,
+      fluid: true,
+      playbackRates: [0.5, 1, 1.5, 2]
+    });
 
-      console.log('Initializing player with videoUrl:', videoUrl);
+    player.src({ src: videoUrl, type: 'video/mp4' });
+    playerRef.current = player;
 
-      // Dispose old player if exists
+    return () => {
       if (playerRef.current) {
         playerRef.current.dispose();
         playerRef.current = null;
       }
-
-      // Create new player
-      const player = videojs(videoRef.current, {
-        controls: true,
-        responsive: true,
-        fluid: true,
-        playbackRates: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
-      });
-
-      playerRef.current = player;
-
-      // Set source
-      player.src({ src: videoUrl, type: 'video/mp4' });
-
-      // Seek to saved progress
-      player.one('loadedmetadata', () => {
-        if (!hasSeekedToProgress.current && savedProgressSeconds.current > 5) {
-          player.currentTime(savedProgressSeconds.current);
-          hasSeekedToProgress.current = true;
-        }
-      });
-
-      // Progress tracking
-      player.on('playing', () => {
-        if (progressInterval.current) clearInterval(progressInterval.current);
-        progressInterval.current = setInterval(() => {
-          if (!player.paused() && !player.seeking()) updateProgress();
-        }, 10000);
-      });
-
-      player.on('pause', () => {
-        if (!player.seeking()) updateProgress();
-      });
-
-      player.on('ended', () => {
-        updateProgress();
-      });
-    });
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      if (progressInterval.current) clearInterval(progressInterval.current);
-      if (playerRef.current && !playerRef.current.isDisposed()) {
-        playerRef.current.dispose();
-        playerRef.current = null;
-      }
     };
-  }, [videoUrl, updateProgress]);
+  }, [videoUrl]);
 
-  const handleFileSelect = (file) => {
-    if (currentFile && currentFile.is_video && playerRef.current) {
-      updateProgress();
-    }
-    setCurrentFile(file);
-  };
-
-  if (loading) return <div className="loading">Loading lesson...</div>;
-  if (error) return <div className="error">{error}</div>;
-  if (!lesson) return <div className="error">Lesson not found</div>;
+  if (!lesson) return <div>Loading...</div>;
 
   const videos = lesson.files?.filter(f => f.is_video) || [];
-  const documents = lesson.files?.filter(f => f.is_document) || [];
 
   return (
     <div className="lesson-player-enhanced">
       <div className="player-layout">
         <div className="main-content">
           <div className="video-container">
-            <div className="video-wrapper" style={{ display: currentFile && currentFile.is_video ? 'block' : 'none' }}>
-              <div data-vjs-player>
-                <video ref={videoRef} className="video-js vjs-theme-city vjs-big-play-centered" />
-              </div>
-            </div>
-            {(!currentFile || !currentFile.is_video) && (
-              <div className="no-video"><p>Select a video to start watching</p></div>
-            )}
+            <video ref={videoRef} className="video-js vjs-theme-city" />
           </div>
-
           <div className="lesson-info">
             <h1>{lesson.title}</h1>
-            {lesson.description && <p className="description">{lesson.description}</p>}
-            {currentFile && (
-              <div className="current-file-info">
-                <h3>Now Playing: {currentFile.filename}</h3>
-              </div>
-            )}
+            {currentFile && <h3>Playing: {currentFile.filename}</h3>}
           </div>
         </div>
 
         <div className="sidebar">
-          {videos.length > 0 && (
-            <div className="sidebar-section">
-              <h2>Videos ({videos.length})</h2>
-              <div className="files-list">
-                {videos.map((file, index) => (
-                  <div
-                    key={file.id}
-                    className={`file-item ${currentFile?.id === file.id ? 'active' : ''} ${file.completed ? 'completed' : ''}`}
-                    onClick={() => handleFileSelect(file)}
-                  >
-                    <div className="file-number">{index + 1}</div>
-                    <div className="file-details">
-                      <div className="file-name">{file.filename}</div>
-                    </div>
-                    {file.completed && <span className="check-mark">✓</span>}
+          <div className="sidebar-section">
+            <h2>Videos ({videos.length})</h2>
+            <div className="files-list">
+              {videos.map((file, i) => (
+                <div
+                  key={file.id}
+                  className={`file-item ${currentFile?.id === file.id ? 'active' : ''}`}
+                  onClick={() => setCurrentFile(file)}
+                >
+                  <div className="file-number">{i + 1}</div>
+                  <div className="file-details">
+                    <div className="file-name">{file.filename}</div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          )}
-
-          {documents.length > 0 && (
-            <div className="sidebar-section">
-              <h2>Resources ({documents.length})</h2>
-              <div className="files-list">
-                {documents.map(file => (
-                  <a
-                    key={file.id}
-                    href={`${API_URL}/api/document/${file.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="file-item document"
-                  >
-                    <div className="file-icon">📄</div>
-                    <div className="file-details">
-                      <div className="file-name">{file.filename}</div>
-                    </div>
-                    <span className="download-icon">⬇</span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
