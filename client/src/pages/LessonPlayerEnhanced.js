@@ -17,6 +17,7 @@ function LessonPlayerEnhanced() {
   const shouldSeek = useRef(true);
   const currentFileIdRef = useRef(null);
   const hasSetInitialTime = useRef(false);
+  const savedProgressSeconds = useRef(0);
 
   const updateProgress = useCallback(async () => {
     if (!currentFile || !currentFile.is_video || !videoRef.current) return;
@@ -97,6 +98,7 @@ function LessonPlayerEnhanced() {
       currentFileIdRef.current = currentFile.id;
       hasSetInitialTime.current = false;
       shouldSeek.current = true;
+      savedProgressSeconds.current = 0;
 
       try {
         // Fetch both signed URL and latest progress in parallel
@@ -107,6 +109,9 @@ function LessonPlayerEnhanced() {
 
         const urlData = await urlResponse.json();
         const progressData = await progressResponse.json();
+
+        // Store progress in ref for immediate access in onCanPlay
+        savedProgressSeconds.current = progressData.progress_seconds || 0;
 
         // Update current file with latest progress from Redis/Firebase
         setCurrentFile(prev => ({
@@ -131,21 +136,17 @@ function LessonPlayerEnhanced() {
   // Handle video ready to play - seek to saved position
   const handleVideoCanPlay = useCallback(() => {
     const video = videoRef.current;
-    if (!video || !currentFile || hasSetInitialTime.current) return;
+    if (!video || hasSetInitialTime.current) return;
 
     // Seek to saved position only once when video is ready
-    if (shouldSeek.current && currentFile.progress_seconds && currentFile.progress_seconds > 5) {
-      console.log(`Seeking to saved position: ${currentFile.progress_seconds}s`);
-
-      // Use requestAnimationFrame to ensure DOM is ready
-      requestAnimationFrame(() => {
-        video.currentTime = currentFile.progress_seconds;
-        hasSetInitialTime.current = true;
-      });
-    } else {
-      hasSetInitialTime.current = true;
+    // Use ref for progress_seconds to avoid race condition with state updates
+    const progressToSeek = savedProgressSeconds.current;
+    if (shouldSeek.current && progressToSeek > 5) {
+      console.log(`Seeking to saved position: ${progressToSeek}s`);
+      video.currentTime = progressToSeek;
     }
-  }, [currentFile]);
+    hasSetInitialTime.current = true;
+  }, []);
 
   useEffect(() => {
     if (currentFile && currentFile.is_video) {
