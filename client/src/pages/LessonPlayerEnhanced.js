@@ -191,6 +191,12 @@ function LessonPlayerEnhanced() {
       playerRef.current = null;
     }
 
+    // Clear any existing interval
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current);
+      progressInterval.current = null;
+    }
+
     // Initialize new player
     const player = videojs(videoRef.current, {
       controls: true,
@@ -250,22 +256,36 @@ function LessonPlayerEnhanced() {
       }
     });
 
-    // Handle pause to save progress
+    // Handle pause to save progress (but not when seeking)
     player.on('pause', () => {
-      updateProgress();
-    });
-
-    // Update progress every 5 seconds while playing
-    progressInterval.current = setInterval(() => {
-      if (player && !player.paused()) {
+      if (!player.seeking()) {
         updateProgress();
       }
-    }, 5000);
+    });
+
+    // Update progress every 10 seconds while playing
+    const startProgressTracking = () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+      
+      progressInterval.current = setInterval(() => {
+        if (player && !player.paused() && !player.seeking() && !player.isDisposed()) {
+          updateProgress();
+        }
+      }, 10000); // Changed from 5000 to 10000 (10 seconds)
+    };
+
+    // Start tracking after video starts playing
+    player.on('playing', () => {
+      startProgressTracking();
+    });
 
     // Cleanup
     return () => {
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
+        progressInterval.current = null;
       }
       if (player && !player.isDisposed()) {
         player.dispose();
@@ -414,4 +434,3 @@ function LessonPlayerEnhanced() {
 
 export default LessonPlayerEnhanced;
 
-// Made with Bob
