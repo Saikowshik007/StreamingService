@@ -322,8 +322,9 @@ function LessonPlayerEnhanced() {
     player.on('ended', () => {
       updateProgress();
       // Auto-play next video if available
-      if (lesson && lesson.files) {
-        const currentIndex = lesson.files.findIndex(f => f.id === currentFile.id);
+      const file = currentFileRef.current;
+      if (lesson && lesson.files && file) {
+        const currentIndex = lesson.files.findIndex(f => f.id === file.id);
         if (currentIndex < lesson.files.length - 1) {
           const nextFile = lesson.files[currentIndex + 1];
           if (nextFile.is_video) {
