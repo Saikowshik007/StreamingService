@@ -301,11 +301,14 @@ function LessonPlayerEnhanced() {
     };
 
     const showSeekFeedback = (direction) => {
-      const videoElement = player.el();
+      // Append to video-container for proper positioning
+      const videoContainer = document.querySelector('.video-container');
+      if (!videoContainer) return;
+
       const feedback = document.createElement('div');
       feedback.className = `seek-feedback seek-${direction}`;
       feedback.innerHTML = direction === 'backward' ? '⏪ 10s' : '10s ⏩';
-      videoElement.appendChild(feedback);
+      videoContainer.appendChild(feedback);
 
       setTimeout(() => {
         feedback.remove();
