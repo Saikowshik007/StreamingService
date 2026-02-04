@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import videojs from 'video.js';
-import 'video.js/dist/video-js.css';
-import '@videojs/themes/dist/city/index.css';
 import API_URL, { authenticatedFetch } from '../config';
 import './LessonPlayerEnhanced.css';
 
@@ -10,9 +7,8 @@ function LessonPlayerEnhanced() {
   const { lessonId } = useParams();
   const [lesson, setLesson] = useState(null);
   const [currentFile, setCurrentFile] = useState(null);
-  const [playerReady, setPlayerReady] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
   const videoRef = useRef(null);
-  const playerRef = useRef(null);
 
   // Load lesson
   useEffect(() => {
@@ -27,101 +23,31 @@ function LessonPlayerEnhanced() {
       });
   }, [lessonId]);
 
-  // Initialize player once - using useEffect to ensure DOM is ready
+  // Load video URL when file changes
   useEffect(() => {
-    // Don't initialize if already initialized or no video ref
-    if (playerRef.current || !videoRef.current) return;
+    if (!currentFile?.is_video) return;
 
-    console.log('Initializing video.js player...');
+    console.log('Loading video:', currentFile.filename);
 
-    const player = videojs(videoRef.current, {
-      controls: true,
-      fluid: true,
-      playbackRates: [0.5, 1, 1.5, 2],
-      preload: 'auto',
-      html5: {
-        vhs: {
-          overrideNative: true
-        }
-      }
-    });
-
-    // Wait for player to be ready
-    player.ready(() => {
-      console.log('Video.js player is ready');
-      playerRef.current = player;
-      setPlayerReady(true);
-    });
-
-    return () => {
-      if (playerRef.current) {
-        console.log('Disposing video.js player');
-        playerRef.current.dispose();
-        playerRef.current = null;
-        setPlayerReady(false);
-      }
-    };
-  }, []); // Empty dependency array - only run once
-
-  // Load video URL when file changes and update player
-  useEffect(() => {
-    if (!currentFile?.is_video) {
-      console.log('No video file to load');
-      return;
-    }
-
-    if (!playerReady || !playerRef.current) {
-      console.log('Player not ready yet, waiting...');
-      return;
-    }
-
-    console.log('Loading video for file:', currentFile.id, currentFile.filename);
-
-    const player = playerRef.current;
-
-    // Pause current playback
-    player.pause();
-
-    const signedUrlEndpoint = `${API_URL}/api/stream/signed-url/${currentFile.id}`;
-    console.log('Fetching signed URL from:', signedUrlEndpoint);
-
-    authenticatedFetch(signedUrlEndpoint)
-      .then(r => {
-        console.log('Response status:', r.status, r.statusText);
-        if (!r.ok) {
-          throw new Error(`HTTP error! status: ${r.status}`);
-        }
-        return r.json();
-      })
+    authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`)
+      .then(r => r.json())
       .then(data => {
-        console.log('Signed URL response:', data);
-
-        // Construct the full stream URL
-        const streamUrl = `${API_URL}${data.url}`;
-        console.log('Final stream URL:', streamUrl);
-
-        // Set the new source
-        player.src({
-          src: streamUrl,
-          type: 'video/mp4'
-        });
-
-        // Reset and load the new video
-        player.load();
-
-        console.log('Video source set and loaded');
+        const url = `${API_URL}${data.url}`;
+        console.log('Video URL:', url);
+        setVideoUrl(url);
       })
       .catch(err => {
         console.error('Error loading video:', err);
-        console.error('Error details:', err.message);
-
-        // Show error in player
-        player.error({
-          code: 4,
-          message: 'Failed to load video: ' + err.message
-        });
       });
-  }, [currentFile, playerReady]);
+  }, [currentFile]);
+
+  // Reset video when URL changes
+  useEffect(() => {
+    if (videoUrl && videoRef.current) {
+      console.log('Setting video source:', videoUrl);
+      videoRef.current.load();
+    }
+  }, [videoUrl]);
 
   if (!lesson) return <div>Loading...</div>;
 
@@ -132,7 +58,15 @@ function LessonPlayerEnhanced() {
       <div className="player-layout">
         <div className="main-content">
           <div className="video-container">
-            <video ref={videoRef} className="video-js vjs-theme-city" />
+            <video
+              ref={videoRef}
+              controls
+              controlsList="nodownload"
+              style={{ width: '100%', maxHeight: '80vh' }}
+            >
+              {videoUrl && <source src={videoUrl} type="video/mp4" />}
+              Your browser does not support the video tag.
+            </video>
           </div>
           <div className="lesson-info">
             <h1>{lesson.title}</h1>
