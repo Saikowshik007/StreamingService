@@ -20,14 +20,19 @@ function LessonPlayerEnhanced() {
   const currentFileIdRef = useRef(null);
   const savedProgressSeconds = useRef(0);
   const currentFileRef = useRef(null);
+  const lessonRef = useRef(null);
   const hasSeekedToProgress = useRef(false);
   const lastProgressUpdate = useRef(0);
   const lessonRefreshInterval = useRef(null);
 
-  // Keep ref in sync with state for cleanup
+  // Keep refs in sync with state for cleanup
   useEffect(() => {
     currentFileRef.current = currentFile;
   }, [currentFile]);
+
+  useEffect(() => {
+    lessonRef.current = lesson;
+  }, [lesson]);
 
   // Function to refresh lesson data to get updated progress
   // Only update if there are actual changes to avoid re-renders
@@ -316,10 +321,11 @@ function LessonPlayerEnhanced() {
 
         // Auto-play next video if available
         const file = currentFileRef.current;
-        if (lesson && lesson.files && file) {
-          const currentIndex = lesson.files.findIndex(f => f.id === file.id);
-          if (currentIndex < lesson.files.length - 1) {
-            const nextFile = lesson.files[currentIndex + 1];
+        const currentLesson = lessonRef.current;
+        if (currentLesson && currentLesson.files && file) {
+          const currentIndex = currentLesson.files.findIndex(f => f.id === file.id);
+          if (currentIndex < currentLesson.files.length - 1) {
+            const nextFile = currentLesson.files[currentIndex + 1];
             if (nextFile.is_video) {
               setTimeout(() => setCurrentFile(nextFile), 1000);
             }
@@ -364,6 +370,7 @@ function LessonPlayerEnhanced() {
         playerRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array - only run once on mount
 
   // Separate effect to handle video source changes
