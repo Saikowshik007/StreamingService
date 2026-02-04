@@ -20,48 +20,13 @@ function LessonPlayerEnhanced() {
   const currentFileIdRef = useRef(null);
   const savedProgressSeconds = useRef(0);
   const currentFileRef = useRef(null);
-  const lessonRef = useRef(null);
   const hasSeekedToProgress = useRef(false);
   const lastProgressUpdate = useRef(0);
-  const lessonRefreshInterval = useRef(null);
 
-  // Keep refs in sync with state for cleanup
+  // Keep ref in sync with state for cleanup
   useEffect(() => {
     currentFileRef.current = currentFile;
   }, [currentFile]);
-
-  useEffect(() => {
-    lessonRef.current = lesson;
-  }, [lesson]);
-
-  // Function to refresh lesson data to get updated progress
-  // Only update if there are actual changes to avoid re-renders
-  const refreshLessonProgress = useCallback(async () => {
-    try {
-      const response = await authenticatedFetch(`${API_URL}/api/lessons/${lessonId}`);
-      const data = await response.json();
-
-      // Only update state if the data has actually changed
-      // This prevents unnecessary re-renders that blank the video
-      setLesson(prevLesson => {
-        if (!prevLesson) return data;
-
-        // Check if any progress values have changed
-        const hasChanges = data.files?.some((newFile, idx) => {
-          const oldFile = prevLesson.files?.[idx];
-          return !oldFile ||
-                 newFile.progress_percentage !== oldFile.progress_percentage ||
-                 newFile.progress_seconds !== oldFile.progress_seconds ||
-                 newFile.completed !== oldFile.completed;
-        });
-
-        // Only update if there are actual changes
-        return hasChanges ? data : prevLesson;
-      });
-    } catch (err) {
-      console.error('Failed to refresh lesson progress:', err);
-    }
-  }, [lessonId]);
 
   const updateProgress = useCallback(() => {
     const file = currentFileRef.current;
@@ -150,15 +115,8 @@ function LessonPlayerEnhanced() {
       // Save progress when component unmounts
       saveProgressOnUnmount();
 
-      const progressInt = progressInterval.current;
-      const lessonRefreshInt = lessonRefreshInterval.current;
-
-      if (progressInt) {
-        clearInterval(progressInt);
-      }
-
-      if (lessonRefreshInt) {
-        clearInterval(lessonRefreshInt);
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
       }
     };
   }, [lessonId, saveProgressOnUnmount]);
