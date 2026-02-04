@@ -377,6 +377,24 @@ class DatabaseAdapter:
 
         return None
 
+    def update_course_progress(self, course_id, user_id='default_user'):
+        """Update/recalculate course progress for a user."""
+        if self.pg_db:
+            try:
+                # Use the internal _update_course_progress method
+                self.pg_db._update_course_progress(user_id, course_id)
+                return True
+            except Exception as e:
+                logger.error(f"Error updating course progress in PostgreSQL: {str(e)}")
+
+        if self.use_firebase_fallback:
+            try:
+                return firebase_db.update_course_progress(course_id, user_id)
+            except Exception as e:
+                logger.error(f"Error updating course progress in Firebase: {str(e)}")
+
+        return False
+
     # ==================== SCAN HISTORY ====================
 
     def record_scan_history(self, scan_data):
