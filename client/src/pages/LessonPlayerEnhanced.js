@@ -156,20 +156,18 @@ function LessonPlayerEnhanced() {
   // Fetch signed URL and latest progress when the file ID changes
   useEffect(() => {
     const fetchVideoData = async () => {
-      const file = currentFileRef.current;
-      
-      if (!file || !file.is_video) {
+      if (!currentFile || !currentFile.is_video) {
         setVideoUrl(null);
         currentFileIdRef.current = null;
         return;
       }
 
       // Only fetch new URL if the file ID has actually changed
-      if (currentFileIdRef.current === file.id) {
+      if (currentFileIdRef.current === currentFile.id) {
         return;
       }
 
-      currentFileIdRef.current = file.id;
+      currentFileIdRef.current = currentFile.id;
       hasSeekedToProgress.current = false;
       savedProgressSeconds.current = 0;
       lastProgressUpdate.current = 0;
@@ -177,8 +175,8 @@ function LessonPlayerEnhanced() {
       try {
         // Fetch both signed URL and latest progress in parallel
         const [urlResponse, progressResponse] = await Promise.all([
-          authenticatedFetch(`${API_URL}/api/stream/signed-url/${file.id}`),
-          authenticatedFetch(`${API_URL}/api/progress/file/${file.id}`)
+          authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`),
+          authenticatedFetch(`${API_URL}/api/progress/file/${currentFile.id}`)
         ]);
 
         const urlData = await urlResponse.json();
@@ -187,7 +185,7 @@ function LessonPlayerEnhanced() {
         // Store progress in ref for immediate access
         savedProgressSeconds.current = progressData.progress_seconds || 0;
 
-        console.log(`Loaded progress for file ${file.id}: ${savedProgressSeconds.current}s`);
+        console.log(`Loaded progress for file ${currentFile.id}: ${savedProgressSeconds.current}s`);
 
         // Construct full URL with signature and expiration
         const signedUrl = `${API_URL}${urlData.url}`;
