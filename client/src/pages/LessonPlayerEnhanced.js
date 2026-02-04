@@ -204,10 +204,15 @@ function LessonPlayerEnhanced() {
     fetchVideoData();
   }, [currentFile]);
 
-  // Initialize player ONCE and ONLY ONCE
+  // Initialize player when video element is available
   useEffect(() => {
+    // Need both video element AND we need currentFile to be a video
+    if (!videoRef.current || !currentFile?.is_video) {
+      return;
+    }
+
     // If player is already initialized, do nothing
-    if (playerInitialized.current || !videoRef.current) {
+    if (playerInitialized.current) {
       return;
     }
 
@@ -350,7 +355,7 @@ function LessonPlayerEnhanced() {
       playerInitialized.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty array is intentional - we only want to initialize once
+  }, [currentFile?.is_video]); // Run when we have a video file (triggers rendering of video element)
 
   // Load video source when videoUrl changes
   useEffect(() => {
