@@ -206,17 +206,31 @@ function LessonPlayerEnhanced() {
 
   // Initialize player when video element is available
   useEffect(() => {
+    console.log('Player init effect running', {
+      hasVideoRef: !!videoRef.current,
+      hasCurrentFile: !!currentFile,
+      isVideo: currentFile?.is_video,
+      playerInitialized: playerInitialized.current
+    });
+
     // Need both video element AND we need currentFile to be a video
-    if (!videoRef.current || !currentFile?.is_video) {
+    if (!videoRef.current) {
+      console.log('No video ref yet');
+      return;
+    }
+
+    if (!currentFile?.is_video) {
+      console.log('No current video file yet');
       return;
     }
 
     // If player is already initialized, do nothing
     if (playerInitialized.current) {
+      console.log('Player already initialized, skipping');
       return;
     }
 
-    console.log('Initializing Video.js player for the first time');
+    console.log('🎬 INITIALIZING Video.js player for the first time');
     playerInitialized.current = true;
 
     const player = videojs(videoRef.current, {
@@ -246,9 +260,10 @@ function LessonPlayerEnhanced() {
     });
 
     playerRef.current = player;
+    console.log('✅ Player reference set:', !!playerRef.current);
 
     player.ready(() => {
-      console.log('Video.js player is ready');
+      console.log('✅ Video.js player is ready');
     });
 
     // Double-tap to seek
@@ -343,7 +358,7 @@ function LessonPlayerEnhanced() {
     });
 
     return () => {
-      console.log('Disposing player on unmount');
+      console.log('🧹 Disposing player on unmount');
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
         progressInterval.current = null;
