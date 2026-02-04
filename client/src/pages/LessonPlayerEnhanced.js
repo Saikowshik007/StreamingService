@@ -31,17 +31,25 @@ function LessonPlayerEnhanced() {
     if (!currentFile || !currentFile.is_video || !playerRef.current) return;
 
     const player = playerRef.current;
+    if (player.isDisposed()) return;
+    
     const currentTime = player.currentTime();
     const duration = player.duration();
     
-    if (!duration || isNaN(duration)) return;
+    if (!duration || isNaN(duration) || duration === 0) return;
 
     const progress_seconds = Math.floor(currentTime);
     const progress_percentage = (currentTime / duration) * 100;
     const completed = currentTime >= duration - 2;
 
+    // Don't update if progress hasn't changed significantly (at least 1 second)
+    if (currentFile.progress_seconds && Math.abs(progress_seconds - currentFile.progress_seconds) < 1) {
+      return;
+    }
+
     try {
-      await authenticatedFetch(`${API_URL}/api/progress`, {
+      // Fire and forget - don't await to avoid blocking playback
+      authenticatedFetch(`${API_URL}/api/progress`, {
         method: 'POST',
         body: JSON.stringify({
           file_id: currentFile.id,
@@ -49,9 +57,11 @@ function LessonPlayerEnhanced() {
           progress_percentage,
           completed
         })
+      }).catch(err => {
+        console.error('Failed to update progress:', err);
       });
 
-      // Update local state
+      // Update local state without awaiting
       setCurrentFile(prev => ({
         ...prev,
         progress_seconds,
