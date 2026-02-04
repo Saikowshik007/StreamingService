@@ -221,7 +221,7 @@ function LessonPlayerEnhanced() {
     fetchVideoData();
   }, [currentFile]);
 
-  // Initialize Video.js player ONCE when component mounts and video element is ready
+  // Initialize Video.js player ONCE when video element is ready
   useEffect(() => {
     // Wait for video element to be in the DOM
     if (!videoRef.current) {
@@ -375,7 +375,7 @@ function LessonPlayerEnhanced() {
 
     // Cleanup only on component unmount
     return () => {
-      console.log('Cleaning up player');
+      console.log('Cleaning up player on unmount');
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
         progressInterval.current = null;
@@ -386,7 +386,7 @@ function LessonPlayerEnhanced() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFile, videoUrl]); // Trigger when we have a video to show
+  }, [currentFile?.is_video]); // Only reinitialize if we go from no video to video
 
   // Separate effect to handle video source changes
   useEffect(() => {
