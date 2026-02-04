@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from decimal import Decimal
 from functools import wraps
 from typing import Any, Optional, Callable
 
@@ -44,13 +45,15 @@ class CacheService:
             self.enabled = False
 
     def _serialize(self, data: Any) -> str:
-        """Serialize data to JSON string, handling datetime objects"""
-        def datetime_handler(obj):
+        """Serialize data to JSON string, handling datetime and Decimal objects"""
+        def json_handler(obj):
             if isinstance(obj, datetime):
                 return obj.isoformat()
+            if isinstance(obj, Decimal):
+                return float(obj)
             raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
-        return json.dumps(data, default=datetime_handler)
+        return json.dumps(data, default=json_handler)
 
     def _deserialize(self, data: str) -> Any:
         """Deserialize JSON string to Python object"""
