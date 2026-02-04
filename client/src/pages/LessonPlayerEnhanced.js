@@ -30,11 +30,29 @@ function LessonPlayerEnhanced() {
   }, [currentFile]);
 
   // Function to refresh lesson data to get updated progress
+  // Only update if there are actual changes to avoid re-renders
   const refreshLessonProgress = useCallback(async () => {
     try {
       const response = await authenticatedFetch(`${API_URL}/api/lessons/${lessonId}`);
       const data = await response.json();
-      setLesson(data);
+
+      // Only update state if the data has actually changed
+      // This prevents unnecessary re-renders that blank the video
+      setLesson(prevLesson => {
+        if (!prevLesson) return data;
+
+        // Check if any progress values have changed
+        const hasChanges = data.files?.some((newFile, idx) => {
+          const oldFile = prevLesson.files?.[idx];
+          return !oldFile ||
+                 newFile.progress_percentage !== oldFile.progress_percentage ||
+                 newFile.progress_seconds !== oldFile.progress_seconds ||
+                 newFile.completed !== oldFile.completed;
+        });
+
+        // Only update if there are actual changes
+        return hasChanges ? data : prevLesson;
+      });
     } catch (err) {
       console.error('Failed to refresh lesson progress:', err);
     }
@@ -43,16 +61,16 @@ function LessonPlayerEnhanced() {
   const updateProgress = useCallback(() => {
     const file = currentFileRef.current;
     const player = playerRef.current;
-    
+
     if (!file || !file.is_video || !player || player.isDisposed()) return;
-    
+
     const currentTime = player.currentTime();
     const duration = player.duration();
-    
+
     if (!duration || isNaN(duration) || duration === 0) return;
 
     const progress_seconds = Math.floor(currentTime);
-    
+
     // Don't update if progress hasn't changed significantly (at least 1 second)
     if (Math.abs(progress_seconds - lastProgressUpdate.current) < 1) {
       return;
@@ -63,6 +81,7 @@ function LessonPlayerEnhanced() {
     const completed = currentTime >= duration - 2;
 
     // Fire and forget - don't block playback
+    // REMOVED the refreshLessonProgress() call that was causing re-renders
     authenticatedFetch(`${API_URL}/api/progress`, {
       method: 'POST',
       body: JSON.stringify({
@@ -71,13 +90,10 @@ function LessonPlayerEnhanced() {
         progress_percentage,
         completed
       })
-    }).then(() => {
-      // Refresh lesson data to update sidebar progress
-      refreshLessonProgress();
     }).catch(err => {
       console.error('Failed to update progress:', err);
     });
-  }, [refreshLessonProgress]);
+  }, []); // Removed refreshLessonProgress dependency
 
   // Save progress using refs (for cleanup/unmount)
   const saveProgressOnUnmount = useCallback(async () => {
@@ -87,7 +103,7 @@ function LessonPlayerEnhanced() {
 
     const currentTime = player.currentTime();
     const duration = player.duration();
-    
+
     if (!duration || isNaN(duration)) return;
 
     const progress_seconds = Math.floor(currentTime);
@@ -125,10 +141,11 @@ function LessonPlayerEnhanced() {
 
     fetchLesson();
 
-    // Refresh lesson progress every 15 seconds to update sidebar
+    // Refresh lesson progress every 30 seconds (increased from 15)
+    // This updates the sidebar progress without disrupting the video
     lessonRefreshInterval.current = setInterval(() => {
       refreshLessonProgress();
-    }, 15000);
+    }, 30000);
 
     return () => {
       // Save progress when component unmounts
@@ -244,36 +261,38 @@ function LessonPlayerEnhanced() {
 
     playerRef.current = player;
 
-    // Add double-tap seek functionality
+    // Double-tap to seek functionality
     let lastTapTime = 0;
     let lastTapX = 0;
-    const doubleTapThreshold = 300; // ms
+    const doubleTapThreshold = 300;
 
     const handleDoubleTap = (e) => {
-      const currentTime = Date.now();
-      const tapX = e.touches ? e.touches[0].clientX : e.clientX;
-      
-      if (currentTime - lastTapTime < doubleTapThreshold && Math.abs(tapX - lastTapX) < 50) {
-        // Double tap detected
-        const videoElement = player.el();
-        const rect = videoElement.getBoundingClientRect();
-        const clickX = e.touches ? e.touches[0].clientX : e.clientX;
-        const relativeX = clickX - rect.left;
+      const currentTime = new Date().getTime();
+      const tapTimeDiff = currentTime - lastTapTime;
+
+      // Get tap position
+      const rect = player.el().getBoundingClientRect();
+      const tapX = (e.clientX || e.changedTouches?.[0]?.clientX) - rect.left;
+
+      if (tapTimeDiff < doubleTapThreshold && tapTimeDiff > 0) {
+        e.preventDefault();
+
         const videoWidth = rect.width;
-        
-        // Determine if tap was on left or right side
-        if (relativeX < videoWidth / 2) {
+        const leftThird = videoWidth / 3;
+        const rightThird = videoWidth * 2 / 3;
+
+        if (tapX < leftThird) {
           // Left side - go back 10 seconds
           const newTime = Math.max(0, player.currentTime() - 10);
           player.currentTime(newTime);
           showSeekFeedback('backward');
-        } else {
+        } else if (tapX > rightThird) {
           // Right side - go forward 10 seconds
           const newTime = Math.min(player.duration(), player.currentTime() + 10);
           player.currentTime(newTime);
           showSeekFeedback('forward');
         }
-        
+
         lastTapTime = 0; // Reset to prevent triple tap
       } else {
         lastTapTime = currentTime;
@@ -287,7 +306,7 @@ function LessonPlayerEnhanced() {
       feedback.className = `seek-feedback seek-${direction}`;
       feedback.innerHTML = direction === 'backward' ? '⏪ 10s' : '10s ⏩';
       videoElement.appendChild(feedback);
-      
+
       setTimeout(() => {
         feedback.remove();
       }, 800);
@@ -307,7 +326,7 @@ function LessonPlayerEnhanced() {
     // Handle when video metadata is loaded
     player.on('loadedmetadata', () => {
       const progressToSeek = savedProgressSeconds.current;
-      
+
       // Seek to saved position if it exists and we haven't seeked yet
       if (!hasSeekedToProgress.current && progressToSeek > 5) {
         console.log(`Seeking to saved position: ${progressToSeek}s`);
@@ -319,6 +338,9 @@ function LessonPlayerEnhanced() {
     // Handle video end
     player.on('ended', () => {
       updateProgress();
+      // Refresh lesson to show completion status
+      setTimeout(() => refreshLessonProgress(), 500);
+
       // Auto-play next video if available
       const file = currentFileRef.current;
       if (lesson && lesson.files && file) {
@@ -344,12 +366,12 @@ function LessonPlayerEnhanced() {
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
       }
-      
+
       progressInterval.current = setInterval(() => {
         if (player && !player.paused() && !player.seeking() && !player.isDisposed()) {
           updateProgress();
         }
-      }, 10000); // Changed from 5000 to 10000 (10 seconds)
+      }, 10000); // 10 seconds
     };
 
     // Start tracking after video starts playing
@@ -367,7 +389,7 @@ function LessonPlayerEnhanced() {
         player.dispose();
       }
     };
-  }, [videoUrl, currentFile, lesson, updateProgress]);
+  }, [videoUrl, currentFile, lesson, updateProgress, refreshLessonProgress]);
 
   const handleFileSelect = (file) => {
     // Save progress of current video before switching
@@ -509,4 +531,3 @@ function LessonPlayerEnhanced() {
 }
 
 export default LessonPlayerEnhanced;
-
