@@ -10,7 +10,6 @@ function LessonPlayerEnhanced() {
   const { lessonId } = useParams();
   const [lesson, setLesson] = useState(null);
   const [currentFile, setCurrentFile] = useState(null);
-  const [videoUrl, setVideoUrl] = useState(null);
   const videoRef = useRef(null);
   const playerRef = useRef(null);
 
@@ -27,22 +26,9 @@ function LessonPlayerEnhanced() {
       });
   }, [lessonId]);
 
-  // Load video URL when file changes
-  useEffect(() => {
-    if (!currentFile?.is_video) return;
-
-    authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`)
-      .then(r => r.json())
-      .then(data => setVideoUrl(`${API_URL}${data.url}`));
-  }, [currentFile]);
-
-  // Initialize player when URL changes - use LayoutEffect to ensure DOM is ready
+  // Initialize player once
   useLayoutEffect(() => {
-    if (!videoUrl || !videoRef.current) return;
-
-    if (playerRef.current) {
-      playerRef.current.dispose();
-    }
+    if (!videoRef.current) return;
 
     const player = videojs(videoRef.current, {
       controls: true,
@@ -50,7 +36,6 @@ function LessonPlayerEnhanced() {
       playbackRates: [0.5, 1, 1.5, 2]
     });
 
-    player.src({ src: videoUrl, type: 'video/mp4' });
     playerRef.current = player;
 
     return () => {
@@ -59,7 +44,23 @@ function LessonPlayerEnhanced() {
         playerRef.current = null;
       }
     };
-  }, [videoUrl]);
+  }, []);
+
+  // Load video URL when file changes and update player
+  useEffect(() => {
+    if (!currentFile?.is_video || !playerRef.current) return;
+
+    authenticatedFetch(`${API_URL}/api/stream/signed-url/${currentFile.id}`)
+      .then(r => r.json())
+      .then(data => {
+        const url = `${API_URL}${data.url}`;
+        playerRef.current.src({ src: url, type: 'video/mp4' });
+        playerRef.current.load();
+      })
+      .catch(err => {
+        console.error('Error loading video:', err);
+      });
+  }, [currentFile]);
 
   if (!lesson) return <div>Loading...</div>;
 
