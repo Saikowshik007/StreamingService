@@ -5,7 +5,7 @@ Run this after starting PostgreSQL with: docker-compose up -d postgres
 
 import os
 from dotenv import load_dotenv
-from database import get_db_service
+from database_enhanced import get_enhanced_db_service
 
 # Load environment variables
 load_dotenv()
@@ -21,7 +21,7 @@ def test_database_connection():
 
     try:
         # Initialize database service
-        db = get_db_service()
+        db = get_enhanced_db_service()
         print("✓ Database connection pool created successfully")
         print("✓ Database schema initialized successfully")
         print()

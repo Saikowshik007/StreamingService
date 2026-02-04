@@ -774,6 +774,183 @@ class EnhancedDatabaseService:
             self.connection_pool.closeall()
             logger.info("All database connections closed")
 
+    # ==================== OPTIMIZED BATCH QUERY METHODS ====================
+
+    def get_all_courses_with_progress(self, user_id):
+        """
+        Get all courses with progress in a single query (eliminates N+1).
+        Uses LEFT JOIN to fetch course progress alongside course data.
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            cursor.execute("""
+                SELECT
+                    c.*,
+                    COALESCE(cp.progress_percentage, 0) as progress_percentage,
+                    COALESCE(cp.completed_files, 0) as completed_files,
+                    COALESCE(cp.total_files, 0) as progress_total_files
+                FROM courses c
+                LEFT JOIN course_progress cp ON c.id = cp.course_id AND cp.user_id = %s
+                ORDER BY c.title
+            """, (user_id,))
+
+            results = cursor.fetchall()
+            cursor.close()
+            return [dict(row) for row in results] if results else []
+        except Exception as e:
+            logger.error(f"Error getting courses with progress: {str(e)}")
+            return []
+        finally:
+            if conn:
+                self.return_connection(conn)
+
+    def get_course_with_details(self, course_id, user_id):
+        """
+        Get a course with all lessons, files, and progress in minimal queries.
+        Reduces from O(L*F) queries to just 4 queries.
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Query 1: Get course with progress
+            cursor.execute("""
+                SELECT
+                    c.*,
+                    COALESCE(cp.progress_percentage, 0) as progress_percentage,
+                    COALESCE(cp.completed_files, 0) as completed_files,
+                    COALESCE(cp.total_files, 0) as progress_total_files
+                FROM courses c
+                LEFT JOIN course_progress cp ON c.id = cp.course_id AND cp.user_id = %s
+                WHERE c.id = %s
+            """, (user_id, course_id))
+
+            course = cursor.fetchone()
+            if not course:
+                cursor.close()
+                return None
+
+            course = dict(course)
+
+            # Query 2: Get all lessons for the course
+            cursor.execute("""
+                SELECT * FROM lessons
+                WHERE course_id = %s
+                ORDER BY order_index, title
+            """, (course_id,))
+
+            lessons = [dict(row) for row in cursor.fetchall()]
+
+            # Query 3: Get all files for all lessons in this course (single query)
+            cursor.execute("""
+                SELECT * FROM files
+                WHERE course_id = %s
+                ORDER BY lesson_id, order_index, filename
+            """, (course_id,))
+
+            all_files = cursor.fetchall()
+
+            # Query 4: Get all user progress for files in this course (single query)
+            cursor.execute("""
+                SELECT file_id, progress_seconds, progress_percentage, completed
+                FROM user_progress
+                WHERE user_id = %s AND course_id = %s
+            """, (user_id, course_id))
+
+            progress_map = {row['file_id']: dict(row) for row in cursor.fetchall()}
+
+            cursor.close()
+
+            # Build file map by lesson_id
+            files_by_lesson = {}
+            for file_row in all_files:
+                file_dict = dict(file_row)
+                lesson_id = file_dict['lesson_id']
+
+                # Add progress to file
+                file_progress = progress_map.get(file_dict['id'], {})
+                file_dict['progress_seconds'] = file_progress.get('progress_seconds', 0)
+                file_dict['progress_percentage'] = file_progress.get('progress_percentage', 0)
+                file_dict['completed'] = file_progress.get('completed', False)
+
+                if lesson_id not in files_by_lesson:
+                    files_by_lesson[lesson_id] = []
+                files_by_lesson[lesson_id].append(file_dict)
+
+            # Attach files to lessons
+            for lesson in lessons:
+                lesson['files'] = files_by_lesson.get(lesson['id'], [])
+
+            course['lessons'] = lessons
+            return course
+
+        except Exception as e:
+            logger.error(f"Error getting course with details: {str(e)}")
+            return None
+        finally:
+            if conn:
+                self.return_connection(conn)
+
+    def get_lesson_with_files_and_progress(self, lesson_id, user_id):
+        """
+        Get a lesson with all files and progress in 3 queries instead of N+1.
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Query 1: Get lesson
+            cursor.execute("SELECT * FROM lessons WHERE id = %s", (lesson_id,))
+            lesson = cursor.fetchone()
+            if not lesson:
+                cursor.close()
+                return None
+
+            lesson = dict(lesson)
+
+            # Query 2: Get all files for this lesson
+            cursor.execute("""
+                SELECT * FROM files
+                WHERE lesson_id = %s
+                ORDER BY order_index, filename
+            """, (lesson_id,))
+
+            files = [dict(row) for row in cursor.fetchall()]
+
+            if files:
+                # Query 3: Get progress for all files in one query
+                file_ids = [f['id'] for f in files]
+                cursor.execute("""
+                    SELECT file_id, progress_seconds, progress_percentage, completed
+                    FROM user_progress
+                    WHERE user_id = %s AND file_id = ANY(%s)
+                """, (user_id, file_ids))
+
+                progress_map = {row['file_id']: dict(row) for row in cursor.fetchall()}
+
+                # Attach progress to files
+                for file_dict in files:
+                    file_progress = progress_map.get(file_dict['id'], {})
+                    file_dict['progress_seconds'] = file_progress.get('progress_seconds', 0)
+                    file_dict['progress_percentage'] = file_progress.get('progress_percentage', 0)
+                    file_dict['completed'] = file_progress.get('completed', False)
+
+            cursor.close()
+            lesson['files'] = files
+            return lesson
+
+        except Exception as e:
+            logger.error(f"Error getting lesson with files and progress: {str(e)}")
+            return None
+        finally:
+            if conn:
+                self.return_connection(conn)
+
 
 # Singleton instance
 enhanced_db_service = None

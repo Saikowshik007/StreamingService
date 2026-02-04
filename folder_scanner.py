@@ -39,11 +39,6 @@ def get_file_size(file_path):
     except:
         return 0
 
-def get_video_duration(file_path):
-    """Get video duration in seconds (placeholder - would need ffmpeg for real implementation)"""
-    # For now, return None. You can integrate ffmpeg-python to get actual duration
-    return None
-
 def is_video_file(filename):
     """Check if file is a video"""
     return Path(filename).suffix.lower() in VIDEO_EXTENSIONS

@@ -102,13 +102,6 @@ class DatabaseAdapter:
             except Exception as e:
                 logger.error(f"Error getting course by path from PostgreSQL: {str(e)}")
 
-        # Fallback to Firebase - but don't use it to avoid quota limits
-        # if self.use_firebase_fallback:
-        #     try:
-        #         return firebase_db.get_course_by_folder_path(folder_path)
-        #     except Exception as e:
-        #         logger.error(f"Error getting course by path from Firebase: {str(e)}")
-
         return None
 
     def get_all_courses(self):
@@ -492,6 +485,116 @@ class DatabaseAdapter:
             'videos': 0,
             'documents': 0
         }
+
+    # ==================== OPTIMIZED BATCH METHODS ====================
+
+    def get_all_courses_with_progress(self, user_id):
+        """Get all courses with progress in a single query (eliminates N+1)."""
+        if self.pg_db:
+            try:
+                results = self.pg_db.get_all_courses_with_progress(user_id)
+                if results is not None:
+                    return results
+            except Exception as e:
+                logger.error(f"Error getting courses with progress from PostgreSQL: {str(e)}")
+
+        # Fallback to non-optimized method
+        return self._get_all_courses_with_progress_fallback(user_id)
+
+    def _get_all_courses_with_progress_fallback(self, user_id):
+        """Fallback: Get courses with progress using multiple queries."""
+        courses = self.get_all_courses()
+        for course in courses:
+            progress = self.get_course_progress(course['id'], user_id)
+            if progress:
+                course['progress_percentage'] = progress.get('progress_percentage', 0)
+                course['completed_files'] = progress.get('completed_files', 0)
+                course['progress_total_files'] = progress.get('total_files', 0)
+            else:
+                course['progress_percentage'] = 0
+                course['completed_files'] = 0
+                course['progress_total_files'] = 0
+        return courses
+
+    def get_course_with_details(self, course_id, user_id):
+        """Get course with lessons, files, and progress in minimal queries."""
+        if self.pg_db:
+            try:
+                result = self.pg_db.get_course_with_details(course_id, user_id)
+                if result:
+                    return result
+            except Exception as e:
+                logger.error(f"Error getting course with details from PostgreSQL: {str(e)}")
+
+        # Fallback to non-optimized method
+        return self._get_course_with_details_fallback(course_id, user_id)
+
+    def _get_course_with_details_fallback(self, course_id, user_id):
+        """Fallback: Get course with details using multiple queries."""
+        course = self.get_course_by_id(course_id)
+        if not course:
+            return None
+
+        progress = self.get_course_progress(course_id, user_id)
+        if progress:
+            course['progress_percentage'] = progress.get('progress_percentage', 0)
+            course['completed_files'] = progress.get('completed_files', 0)
+            course['progress_total_files'] = progress.get('total_files', 0)
+        else:
+            course['progress_percentage'] = 0
+            course['completed_files'] = 0
+            course['progress_total_files'] = 0
+
+        lessons = self.get_lessons_by_course_id(course_id)
+        for lesson in lessons:
+            lesson['files'] = self.get_files_by_lesson_id(lesson['id'])
+            for file in lesson['files']:
+                file_progress = self.get_user_progress(user_id, file['id'])
+                if file_progress:
+                    file['progress_seconds'] = file_progress.get('progress_seconds', 0)
+                    file['progress_percentage'] = file_progress.get('progress_percentage', 0)
+                    file['completed'] = file_progress.get('completed', False)
+                else:
+                    file['progress_seconds'] = 0
+                    file['progress_percentage'] = 0
+                    file['completed'] = False
+
+        course['lessons'] = lessons
+        return course
+
+    def get_lesson_with_files_and_progress(self, lesson_id, user_id):
+        """Get lesson with files and progress in minimal queries."""
+        if self.pg_db:
+            try:
+                result = self.pg_db.get_lesson_with_files_and_progress(lesson_id, user_id)
+                if result:
+                    return result
+            except Exception as e:
+                logger.error(f"Error getting lesson with files from PostgreSQL: {str(e)}")
+
+        # Fallback to non-optimized method
+        return self._get_lesson_with_files_fallback(lesson_id, user_id)
+
+    def _get_lesson_with_files_fallback(self, lesson_id, user_id):
+        """Fallback: Get lesson with files using multiple queries."""
+        lesson = self.get_lesson_by_id(lesson_id)
+        if not lesson:
+            return None
+
+        files = self.get_files_by_lesson_id(lesson_id)
+        for file in files:
+            file_progress = self.get_user_progress(user_id, file['id'])
+            if file_progress:
+                file['progress_seconds'] = file_progress.get('progress_seconds', 0)
+                file['progress_percentage'] = file_progress.get('progress_percentage', 0)
+                file['completed'] = file_progress.get('completed', False)
+            else:
+                file['progress_seconds'] = 0
+                file['progress_percentage'] = 0
+                file['completed'] = False
+
+        lesson['files'] = files
+        return lesson
 
 
 # Singleton instance

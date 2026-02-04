@@ -15,7 +15,6 @@ from auth_service import require_auth, optional_auth
 from url_signer import generate_signed_url, verify_signed_url, parse_signed_params
 from cache_service import get_cache
 from progress_sync_worker import start_progress_sync_worker, stop_progress_sync_worker
-from database import get_db_service
 import firebase_service  # Still needed for Firebase auth initialization
 
 # Initialize database adapter (PostgreSQL primary, no Firebase fallback)
@@ -138,94 +137,32 @@ atexit.register(stop_progress_sync_worker)
 @api_bp.route('/api/courses', methods=['GET'])
 @require_auth
 def get_courses():
-    """Get all courses with progress"""
+    """Get all courses with progress (optimized - single query)"""
     user_id = request.current_user['uid']
-    courses = db.get_all_courses()
-
-    # Add progress information to each course
-    for course in courses:
-        progress = db.get_course_progress(course['id'], user_id)
-        if progress:
-            course['progress_percentage'] = progress.get('progress_percentage', 0)
-            course['completed_files'] = progress.get('completed_files', 0)
-            course['progress_total_files'] = progress.get('total_files', 0)
-        else:
-            course['progress_percentage'] = 0
-            course['completed_files'] = 0
-            course['progress_total_files'] = 0
-
+    courses = db.get_all_courses_with_progress(user_id)
     return jsonify(courses)
 
 @api_bp.route('/api/courses/<course_id>', methods=['GET'])
 @require_auth
 def get_course(course_id):
-    """Get a specific course with lessons and files"""
+    """Get a specific course with lessons and files (optimized - 4 queries instead of N*M)"""
     user_id = request.current_user['uid']
 
-    course = db.get_course_by_id(course_id)
+    course = db.get_course_with_details(course_id, user_id)
     if not course:
         return jsonify({'error': 'Course not found'}), 404
-
-    # Get progress
-    progress = db.get_course_progress(course_id, user_id)
-    if progress:
-        course['progress_percentage'] = progress.get('progress_percentage', 0)
-        course['completed_files'] = progress.get('completed_files', 0)
-        course['progress_total_files'] = progress.get('total_files', 0)
-    else:
-        course['progress_percentage'] = 0
-        course['completed_files'] = 0
-        course['progress_total_files'] = 0
-
-    # Get lessons with files
-    lessons = db.get_lessons_by_course_id(course_id)
-
-    # Add files to each lesson
-    for lesson in lessons:
-        lesson['files'] = db.get_files_by_lesson_id(lesson['id'])
-
-        # Add progress to each file
-        for file in lesson['files']:
-            file_progress = db.get_user_progress(user_id, file['id'])
-            if file_progress:
-                file['progress_seconds'] = file_progress.get('progress_seconds', 0)
-                file['progress_percentage'] = file_progress.get('progress_percentage', 0)
-                file['completed'] = file_progress.get('completed', False)
-            else:
-                file['progress_seconds'] = 0
-                file['progress_percentage'] = 0
-                file['completed'] = False
-
-    course['lessons'] = lessons
 
     return jsonify(course)
 
 @api_bp.route('/api/lessons/<lesson_id>', methods=['GET'])
 @require_auth
 def get_lesson(lesson_id):
-    """Get a specific lesson with files"""
+    """Get a specific lesson with files (optimized - 3 queries instead of N+1)"""
     user_id = request.current_user['uid']
 
-    lesson = db.get_lesson_by_id(lesson_id)
+    lesson = db.get_lesson_with_files_and_progress(lesson_id, user_id)
     if not lesson:
         return jsonify({'error': 'Lesson not found'}), 404
-
-    # Add files to lesson
-    files = db.get_files_by_lesson_id(lesson_id)
-
-    # Add progress to each file
-    for file in files:
-        file_progress = db.get_user_progress(user_id, file['id'])
-        if file_progress:
-            file['progress_seconds'] = file_progress.get('progress_seconds', 0)
-            file['progress_percentage'] = file_progress.get('progress_percentage', 0)
-            file['completed'] = file_progress.get('completed', False)
-        else:
-            file['progress_seconds'] = 0
-            file['progress_percentage'] = 0
-            file['completed'] = False
-
-    lesson['files'] = files
 
     return jsonify(lesson)
 
@@ -401,10 +338,9 @@ def update_progress_endpoint():
     lesson_id = file_info.get('lesson_id')
     course_id = file_info.get('course_id')
 
-    # Primary: Write to PostgreSQL database
+    # Primary: Write to PostgreSQL database via db adapter
     try:
-        postgres_db = get_db_service()
-        postgres_db.update_file_progress(
+        db.update_user_progress(
             user_id=user_id,
             file_id=file_id,
             lesson_id=lesson_id,
@@ -416,7 +352,6 @@ def update_progress_endpoint():
         logger.info(f"Progress saved to PostgreSQL for user {user_id}, file {file_id}")
     except Exception as e:
         logger.error(f"Failed to save progress to PostgreSQL: {str(e)}")
-        # Continue to Redis/Firebase even if PostgreSQL fails
 
     # Get cache service
     cache = get_cache()
@@ -473,50 +408,24 @@ def get_file_progress_endpoint(file_id):
             logger.debug(f"Progress cache HIT for file {file_id}")
             return jsonify(progress_data)
 
-    # Try PostgreSQL (primary database)
-    try:
-        postgres_db = get_db_service()
-        progress = postgres_db.get_file_progress(user_id, file_id)
-
-        if progress:
-            logger.debug(f"Progress found in PostgreSQL for file {file_id}")
-            # Cache the result
-            if cache.enabled:
-                cache.set(cache_key, progress, ttl=86400)
-            return jsonify(progress)
-    except Exception as e:
-        logger.error(f"Failed to get progress from PostgreSQL: {str(e)}")
-
-    # Fall back to Firebase
-    logger.debug(f"Progress cache MISS for file {file_id}, fetching from Firebase")
+    # Try PostgreSQL via db adapter
     progress = db.get_user_progress(user_id, file_id)
 
-    # Cache the result from Firebase
-    if progress and cache.enabled:
-        cache.set(cache_key, progress, ttl=86400)
+    if progress:
+        logger.debug(f"Progress found in PostgreSQL for file {file_id}")
+        # Cache the result
+        if cache.enabled:
+            cache.set(cache_key, progress, ttl=86400)
 
     return jsonify(progress or {})
 
 @api_bp.route('/api/progress/course/<course_id>', methods=['GET'])
 @require_auth
 def get_course_progress_endpoint(course_id):
-    """Get course progress for a user - tries PostgreSQL first, then Firebase"""
+    """Get course progress for a user"""
     user_id = request.current_user['uid']
-
-    # Try PostgreSQL first
-    try:
-        postgres_db = get_db_service()
-        progress = postgres_db.get_course_progress(user_id, course_id)
-
-        if progress:
-            logger.debug(f"Course progress found in PostgreSQL for course {course_id}")
-            return jsonify(progress)
-    except Exception as e:
-        logger.error(f"Failed to get course progress from PostgreSQL: {str(e)}")
-
-    # Fall back to Firebase
     progress = db.get_course_progress(course_id, user_id)
-    return jsonify(progress)
+    return jsonify(progress or {})
 
 @api_bp.route('/api/scan', methods=['POST'])
 def scan_folders():
