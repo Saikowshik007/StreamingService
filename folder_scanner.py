@@ -294,14 +294,14 @@ def scan_and_import(base_path=None, rescan=False):
         scan_duration = time.time() - start_time
 
         # Record scan history
-        db.add_scan_history(
-            scan_path=base_path,
-            files_found=files_found,
-            courses_added=courses_added,
-            lessons_added=lessons_added,
-            scan_duration=scan_duration,
-            status='success'
-        )
+        db.record_scan_history({
+            'scan_path': base_path,
+            'files_found': files_found,
+            'courses_added': courses_added,
+            'lessons_added': lessons_added,
+            'scan_duration': scan_duration,
+            'status': 'success'
+        })
 
         print("\nScan Summary:")
         print(f"  Courses added: {courses_added}")
@@ -320,13 +320,14 @@ def scan_and_import(base_path=None, rescan=False):
 
         # Record failed scan
         try:
-            db.add_scan_history(
-                scan_path=base_path,
-                files_found=0,
-                courses_added=0,
-                lessons_added=0,
-                scan_duration=scan_duration,
-                status=f'failed: {str(e)}'
+            db.record_scan_history({
+                'scan_path': base_path,
+                'files_found': 0,
+                'courses_added': 0,
+                'lessons_added': 0,
+                'scan_duration': scan_duration,
+                'status': f'failed: {str(e)}'
+            }
             )
         except:
             pass
