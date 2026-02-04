@@ -150,12 +150,15 @@ function LessonPlayerEnhanced() {
       // Save progress when component unmounts
       saveProgressOnUnmount();
 
-      if (progressInterval.current) {
-        clearInterval(progressInterval.current);
+      const progressInt = progressInterval.current;
+      const lessonRefreshInt = lessonRefreshInterval.current;
+
+      if (progressInt) {
+        clearInterval(progressInt);
       }
 
-      if (lessonRefreshInterval.current) {
-        clearInterval(lessonRefreshInterval.current);
+      if (lessonRefreshInt) {
+        clearInterval(lessonRefreshInt);
       }
     };
   }, [lessonId, saveProgressOnUnmount]);
