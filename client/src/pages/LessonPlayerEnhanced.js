@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
@@ -27,9 +27,10 @@ function LessonPlayerEnhanced() {
       });
   }, [lessonId]);
 
-  // Initialize player once
-  useLayoutEffect(() => {
-    if (!videoRef.current || playerRef.current) return;
+  // Initialize player once - using useEffect to ensure DOM is ready
+  useEffect(() => {
+    // Don't initialize if already initialized or no video ref
+    if (playerRef.current || !videoRef.current) return;
 
     console.log('Initializing video.js player...');
 
@@ -60,7 +61,7 @@ function LessonPlayerEnhanced() {
         setPlayerReady(false);
       }
     };
-  }, []);
+  }, []); // Empty dependency array - only run once
 
   // Load video URL when file changes and update player
   useEffect(() => {
