@@ -33,6 +33,83 @@
   position: relative;
 }
 
+.video-player {
+  width: 100%;
+  height: 100%;
+}
+
+/* Buffering Overlay */
+.buffering-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(5px);
+}
+
+.buffering-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.buffering-overlay p {
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 5px 0;
+}
+
+.buffering-overlay small {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  text-transform: capitalize;
+}
+
+/* Buffer Warning */
+.buffer-warning {
+  position: absolute;
+  bottom: 60px;
+  right: 10px;
+  background-color: rgba(255, 152, 0, 0.9);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  z-index: 50;
+  backdrop-filter: blur(5px);
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Video.js Player Styling */
 .video-js {
   width: 100%;
@@ -293,6 +370,54 @@
   color: #666;
   line-height: 1.6;
   margin-bottom: 20px;
+}
+
+/* Connection Quality Info */
+.connection-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 0.95rem;
+  background-color: #f0f4ff;
+  border-left: 4px solid #667eea;
+}
+
+.connection-info.connection-slow-2g,
+.connection-info.connection-2g {
+  background-color: #fff3e0;
+  border-left-color: #ff9800;
+}
+
+.connection-info.connection-3g {
+  background-color: #fffde7;
+  border-left-color: #ffc107;
+}
+
+.connection-info.connection-4g {
+  background-color: #e8f5e9;
+  border-left-color: #4caf50;
+}
+
+.connection-icon {
+  font-size: 1.2rem;
+}
+
+.connection-text {
+  color: #555;
+}
+
+.connection-text strong {
+  color: #333;
+  text-transform: uppercase;
+}
+
+.connection-tip {
+  font-size: 0.85rem;
+  color: #777;
+  font-style: italic;
 }
 
 .current-file-info {

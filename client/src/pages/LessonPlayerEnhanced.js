@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import API_URL, { authenticatedFetch } from '../config';
 import './LessonPlayerEnhanced.css';
@@ -8,7 +8,73 @@ function LessonPlayerEnhanced() {
   const [lesson, setLesson] = useState(null);
   const [currentFile, setCurrentFile] = useState(null);
   const [videoUrl, setVideoUrl] = useState('');
+  const [buffering, setBuffering] = useState(false);
+  const [connectionSpeed, setConnectionSpeed] = useState('unknown');
+  const [bufferHealth, setBufferHealth] = useState(100);
   const videoRef = useRef(null);
+
+  // Detect network connection speed
+  const detectConnectionSpeed = useCallback(() => {
+    if ('connection' in navigator) {
+      const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      const effectiveType = connection?.effectiveType;
+
+      if (effectiveType) {
+        setConnectionSpeed(effectiveType);
+        console.log(`Connection type detected: ${effectiveType}`);
+      }
+
+      // Listen for connection changes
+      connection?.addEventListener('change', () => {
+        setConnectionSpeed(connection.effectiveType);
+        console.log(`Connection changed to: ${connection.effectiveType}`);
+      });
+    }
+  }, []);
+
+  // Get optimal preload strategy based on connection
+  const getPreloadStrategy = useCallback(() => {
+    switch (connectionSpeed) {
+      case 'slow-2g':
+      case '2g':
+        return 'none'; // Don't preload anything
+      case '3g':
+        return 'metadata'; // Only load metadata
+      case '4g':
+      default:
+        return 'metadata'; // Load metadata for better UX
+    }
+  }, [connectionSpeed]);
+
+  // Monitor buffer health
+  const updateBufferHealth = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !video.duration) return;
+
+    try {
+      const buffered = video.buffered;
+      if (buffered.length > 0) {
+        const currentTime = video.currentTime;
+        // Find the buffered range that contains current playback position
+        for (let i = 0; i < buffered.length; i++) {
+          if (buffered.start(i) <= currentTime && buffered.end(i) >= currentTime) {
+            const bufferedAhead = buffered.end(i) - currentTime;
+            const bufferPercentage = Math.min((bufferedAhead / 30) * 100, 100); // 30 seconds buffer is 100%
+            setBufferHealth(bufferPercentage);
+            return;
+          }
+        }
+      }
+      setBufferHealth(0);
+    } catch (e) {
+      console.error('Error calculating buffer health:', e);
+    }
+  }, []);
+
+  // Detect connection speed on mount
+  useEffect(() => {
+    detectConnectionSpeed();
+  }, [detectConnectionSpeed]);
 
   // Load lesson
   useEffect(() => {
@@ -95,6 +161,7 @@ function LessonPlayerEnhanced() {
     };
 
     const handlePlay = () => {
+      setBuffering(false);
       // Save progress every 5 seconds while playing
       progressInterval = setInterval(saveProgress, 5000);
     };
@@ -109,17 +176,55 @@ function LessonPlayerEnhanced() {
       saveProgress(); // Save when video ends
     };
 
+    const handleWaiting = () => {
+      console.log('Video is buffering...');
+      setBuffering(true);
+    };
+
+    const handlePlaying = () => {
+      console.log('Video playing');
+      setBuffering(false);
+    };
+
+    const handleStalled = () => {
+      console.log('Video stalled');
+      setBuffering(true);
+    };
+
+    const handleCanPlay = () => {
+      setBuffering(false);
+    };
+
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
+    video.addEventListener('waiting', handleWaiting);
+    video.addEventListener('playing', handlePlaying);
+    video.addEventListener('stalled', handleStalled);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('progress', updateBufferHealth);
 
     return () => {
       clearInterval(progressInterval);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('waiting', handleWaiting);
+      video.removeEventListener('playing', handlePlaying);
+      video.removeEventListener('stalled', handleStalled);
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('progress', updateBufferHealth);
     };
-  }, [currentFile, videoUrl]);
+  }, [currentFile, videoUrl, updateBufferHealth]);
+
+  // Monitor buffer health periodically
+  useEffect(() => {
+    const bufferInterval = setInterval(() => {
+      updateBufferHealth();
+    }, 1000);
+
+    return () => clearInterval(bufferInterval);
+  }, [updateBufferHealth]);
 
   if (!lesson) return <div>Loading...</div>;
 
@@ -130,18 +235,58 @@ function LessonPlayerEnhanced() {
       <div className="player-layout">
         <div className="main-content">
           <div className="video-container">
-            <video
-              ref={videoRef}
-              controls
-              controlsList="nodownload"
-              style={{ width: '100%', maxHeight: '80vh' }}
-            >
-              {videoUrl && <source src={videoUrl} type="video/mp4" />}
-              Your browser does not support the video tag.
-            </video>
+            <div className="video-wrapper">
+              <video
+                ref={videoRef}
+                controls
+                controlsList="nodownload"
+                className="video-player"
+                style={{ width: '100%', maxHeight: '80vh' }}
+                preload={getPreloadStrategy()}
+                playsInline
+              >
+                {videoUrl && <source src={videoUrl} type="video/mp4" />}
+                Your browser does not support the video tag.
+              </video>
+
+              {/* Buffering Indicator */}
+              {buffering && (
+                <div className="buffering-overlay">
+                  <div className="buffering-spinner"></div>
+                  <p>Buffering...</p>
+                  {connectionSpeed !== 'unknown' && (
+                    <small>Connection: {connectionSpeed}</small>
+                  )}
+                </div>
+              )}
+
+              {/* Buffer Health Indicator */}
+              {bufferHealth < 30 && !buffering && (
+                <div className="buffer-warning">
+                  <span>⚠️ Low buffer</span>
+                </div>
+              )}
+            </div>
           </div>
           <div className="lesson-info">
             <h1>{lesson.title}</h1>
+
+            {/* Connection Quality Info */}
+            {connectionSpeed !== 'unknown' && (
+              <div className={`connection-info connection-${connectionSpeed}`}>
+                <span className="connection-icon">
+                  {connectionSpeed === '4g' ? '📶' :
+                   connectionSpeed === '3g' ? '📡' : '⚠️'}
+                </span>
+                <span className="connection-text">
+                  Connection: <strong>{connectionSpeed.toUpperCase()}</strong>
+                  {(connectionSpeed === 'slow-2g' || connectionSpeed === '2g') && (
+                    <span className="connection-tip"> - Video optimized for your connection</span>
+                  )}
+                </span>
+              </div>
+            )}
+
             {currentFile && <h3>Playing: {currentFile.filename}</h3>}
           </div>
         </div>
